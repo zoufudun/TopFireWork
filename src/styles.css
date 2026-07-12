@@ -1974,17 +1974,21 @@ button {
 
 .branch-topology-table {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
+  border-collapse: collapse;
   text-align: center;
   min-width: 800px;
+  border: 1.5px solid rgba(77, 231, 255, 0.25) !important;
+}
+
+.branch-topology-table th,
+.branch-topology-table td {
+  border: 1px solid rgba(77, 231, 255, 0.15) !important;
+  padding: 14px 10px;
 }
 
 .branch-topology-table th {
-  padding: 14px 10px;
   background: rgba(10, 24, 44, 0.88);
   font-size: 12px;
-  border-bottom: 1px solid rgba(103, 224, 255, 0.16);
   color: var(--muted);
 }
 
@@ -2810,6 +2814,24 @@ button {
   }
   100% {
     top: 50%;
+    opacity: 0;
+  }
+}
+
+/* Pulse dot animation flowing from center of cell (50%) to bottom (100%) */
+@keyframes pulseHalfToBottom {
+  0% {
+    top: 50%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    top: calc(100% + 5px);
     opacity: 0;
   }
 }

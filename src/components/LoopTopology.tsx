@@ -144,14 +144,36 @@ export function LoopTopology() {
   if (currentLoop) {
     const devicesList = Object.values(currentLoop.devices);
     const sortedDevs = [...devicesList].sort((a, b) => a.address - b.address);
-    sortedDevs.forEach((dev, idx) => {
-      if (idx < SLOTS.length) {
-        const slot = SLOTS[idx];
-        gridMatrix[slot.r][slot.c] = dev;
+    
+    // Dynamically sort and slot devices based on physical install layouts:
+    // Branch 1 (Col 0): Addresses 1 to 90
+    // Branch 2 (Col 1): Addresses 91 to 160
+    // Branch 5 (Col 4): Addresses 161 to 250
+    const b1Devs = sortedDevs.filter(d => d.address >= 1 && d.address <= 90);
+    const b2Devs = sortedDevs.filter(d => d.address >= 91 && d.address <= 160);
+    const b5Devs = sortedDevs.filter(d => d.address >= 161 && d.address <= 250);
+
+    b1Devs.forEach((dev, idx) => {
+      if (idx + 1 < MAX_ROWS) {
+        gridMatrix[idx + 1][0] = dev;
+      }
+    });
+
+    b2Devs.forEach((dev, idx) => {
+      if (idx + 2 < MAX_ROWS) {
+        gridMatrix[idx + 2][1] = dev;
+      }
+    });
+
+    b5Devs.forEach((dev, idx) => {
+      if (idx + 1 < MAX_ROWS) {
+        gridMatrix[idx + 1][4] = dev;
       }
     });
   }
 
+  // To fulfill "将每个回路设备放置于一张网表中，列表示一条分支，横坐标表示分支号",
+  // we render all 5 columns on the grid sheet at all times so that the layout is clear and structured.
   // Determine active branches (columns that contain at least one device on the current loop)
   const activeBranches = [false, false, false, false, false];
   for (let c = 0; c < 5; c++) {
@@ -165,10 +187,12 @@ export function LoopTopology() {
   // Calculate the last row index that has a device in each column
   const lastDeviceRowInCol = Array(5).fill(-1);
   for (let c = 0; c < 5; c++) {
-    for (let r = MAX_ROWS - 1; r >= 1; r--) {
-      if (gridMatrix[r][c] !== undefined) {
-        lastDeviceRowInCol[c] = r;
-        break;
+    if (activeBranches[c]) {
+      for (let r = MAX_ROWS - 1; r >= 1; r--) {
+        if (gridMatrix[r][c] !== undefined) {
+          lastDeviceRowInCol[c] = r;
+          break;
+        }
       }
     }
   }
@@ -182,6 +206,10 @@ export function LoopTopology() {
       currentDomIdx++;
     }
   }
+
+  // Calculate indices and count of active branches
+  const activeBranchIndices = activeBranches.map((active, idx) => active ? idx : -1).filter(idx => idx !== -1);
+  const activeBranchCount = activeBranchIndices.length;
 
   // Branch color palette for 5 branches — each branch gets a unique premium color
   const branchColors = [
@@ -888,21 +916,35 @@ export function LoopTopology() {
     srcColor: typeof branchColors[0],
     tgtColor: typeof branchColors[0],
     delayStr: string,
-    key: string
+    key: string,
+    isLeftward?: boolean,
+    isStatic?: boolean,
+    connectCardEdges?: boolean
   ) {
     const totalCols = colSpan + 1;
     const svgWidth  = totalCols * 100;
-    const srcCenterX = 50;                   // Center X of source column in SVG coords
-    const tgtCenterX = colSpan * 100 + 50;   // Center X of target column in SVG coords
-    const midY  = 50;                         // MIDPOINT of source cell height — on the vertical wire between two nodes
-    const endY  = 200;                        // Off-screen bottom — reaches top of next row
+    
+    // Adjust centers if the line runs leftwards (e.g. from Col 2 to Col 1)
+    let srcCenterX = isLeftward ? colSpan * 100 + 50 : 50;
+    let tgtCenterX = isLeftward ? 50 : colSpan * 100 + 50;
+    let endY  = 200;                        // Off-screen bottom — reaches top of next row
 
-    // Full path: T-junction mid-cell → horizontal right → 90° down into next row
+    if (connectCardEdges) {
+      // srcCenterX stays at cell center (50) — the icon/device position in the source cell
+      // endY reaches the vertical center of the device card in the next row (150 = row center in viewBox 0-200)
+      endY = 150;
+    }
+    
+    const midY  = 50;                         // MIDPOINT of source cell height — device icon position
+
+    // Full path: T-junction mid-cell → horizontal → 90° down into next row
     const pathD = `M ${srcCenterX} ${midY} L ${tgtCenterX} ${midY} L ${tgtCenterX} ${endY}`;
 
     // Unique IDs for defs
-    const gradId   = `bg-${srcColor.wire.slice(1)}-${tgtColor.wire.slice(1)}`;
-    const glowId   = `gg-${tgtColor.wire.slice(1)}`;
+    const gradId   = `bg-${srcColor.wire.slice(1)}-${tgtColor.wire.slice(1)}-${isStatic}`;
+    const glowId   = `gg-${tgtColor.wire.slice(1)}-${isStatic}`;
+
+    const wireStroke = isStatic ? "rgba(103, 224, 255, 0.12)" : `url(#${gradId})`;
 
     return (
       <svg
@@ -914,70 +956,93 @@ export function LoopTopology() {
           top: 0,
           left: 0,
           width:  `${totalCols * 100}%`,
-          height: "200%",          // 200% of cell height so the vertical leg visually enters the next row
+          height: `${(endY / 100) * 100}%`, // Adjust vertical height dynamically
           pointerEvents: "none",
           zIndex: 3,
           overflow: "visible"
         }}
       >
         <defs>
-          {/* Gradient transitioning from source branch color to target branch color */}
-          <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%"   stopColor={srcColor.wire} />
-            <stop offset="100%" stopColor={tgtColor.wire} />
-          </linearGradient>
-          {/* Glow filter for the target-side wire */}
-          <filter id={glowId} x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="3.5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
+          {!isStatic && (
+            <>
+              {/* Gradient transitioning from source branch color to target branch color */}
+              <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%"   stopColor={srcColor.wire} />
+                <stop offset="100%" stopColor={tgtColor.wire} />
+              </linearGradient>
+              {/* Glow filter for the target-side wire */}
+              <filter id={glowId} x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="3.5" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </>
+          )}
         </defs>
 
         {/* ─── Layer 1: wide outer glow / shadow ─── */}
-        <path d={pathD} fill="none"
-          stroke={tgtColor.shadow} strokeWidth="10"
-          strokeLinecap="round" strokeLinejoin="round" opacity="0.3"
-        />
+        {!isStatic && (
+          <path d={pathD} fill="none"
+            stroke={tgtColor.shadow} strokeWidth="5"
+            strokeLinecap="round" strokeLinejoin="round" opacity="0.25"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
 
         {/* ─── Layer 2: main gradient wire ─── */}
         <path d={pathD} fill="none"
-          stroke={`url(#${gradId})`} strokeWidth="4"
+          stroke={wireStroke} strokeWidth="2.5"
           strokeLinecap="round" strokeLinejoin="round"
-          filter={`url(#${glowId})`}
+          filter={isStatic ? undefined : `url(#${glowId})`}
+          vectorEffect="non-scaling-stroke"
         />
 
         {/* ─── Layer 3: inner specular highlight ─── */}
         <path d={pathD} fill="none"
-          stroke="rgba(255,255,255,0.4)" strokeWidth="1.2"
+          stroke={isStatic ? "transparent" : "rgba(255,255,255,0.35)"} strokeWidth="0.8"
           strokeLinecap="round" strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
         />
 
-        {/* ─── T-junction marker: glowing circle ON the source vertical wire ─── */}
+        {/* ─── T-junction marker: glowing circle at source device icon position ─── */}
         <circle
-          cx={srcCenterX} cy={midY} r="6"
-          fill={srcColor.wire}
-          style={{ filter: `drop-shadow(0 0 6px ${srcColor.wire}) drop-shadow(0 0 12px ${srcColor.wire})` }}
+          cx={srcCenterX} cy={midY} r="5"
+          fill={isStatic ? "rgba(103, 224, 255, 0.2)" : srcColor.wire}
+          style={isStatic ? undefined : { filter: `drop-shadow(0 0 4px ${srcColor.wire}) drop-shadow(0 0 8px ${srcColor.wire})` }}
         />
         {/* Inner bright core */}
-        <circle cx={srcCenterX} cy={midY} r="3" fill="white" opacity="0.85" />
+        <circle cx={srcCenterX} cy={midY} r="2.5" fill={isStatic ? "rgba(103, 224, 255, 0.4)" : "white"} opacity="0.85" />
 
         {/* ─── Corner bend marker at 90° turn point ─── */}
         <circle
-          cx={tgtCenterX} cy={midY} r="5"
-          fill={tgtColor.wire}
-          style={{ filter: `drop-shadow(0 0 5px ${tgtColor.wire})` }}
+          cx={tgtCenterX} cy={midY} r="4"
+          fill={isStatic ? "rgba(103, 224, 255, 0.2)" : tgtColor.wire}
+          style={isStatic ? undefined : { filter: `drop-shadow(0 0 4px ${tgtColor.wire})` }}
         />
-        <circle cx={tgtCenterX} cy={midY} r="2.5" fill="white" opacity="0.75" />
+        <circle cx={tgtCenterX} cy={midY} r="2" fill={isStatic ? "rgba(103, 224, 255, 0.4)" : "white"} opacity="0.75" />
+
+        {/* ─── End marker at target device icon position ─── */}
+        {connectCardEdges && (
+          <>
+            <circle
+              cx={tgtCenterX} cy={endY} r="5"
+              fill={isStatic ? "rgba(103, 224, 255, 0.2)" : tgtColor.wire}
+              style={isStatic ? undefined : { filter: `drop-shadow(0 0 4px ${tgtColor.wire}) drop-shadow(0 0 8px ${tgtColor.wire})` }}
+            />
+            <circle cx={tgtCenterX} cy={endY} r="2.5" fill={isStatic ? "rgba(103, 224, 255, 0.4)" : "white"} opacity="0.85" />
+          </>
+        )}
 
         {/* ─── Pulsing signal dot flowing along the L-path ─── */}
-        <circle r="5.5" fill={tgtColor.pulse} opacity="0.9"
-          style={{ filter: `drop-shadow(0 0 8px ${tgtColor.wire})` }}
-        >
-          <animateMotion path={pathD} dur="2.4s" repeatCount="indefinite" begin={delayStr} />
-        </circle>
+        {!isStatic && (
+          <circle r="4" fill={tgtColor.pulse} opacity="0.9"
+            style={{ filter: `drop-shadow(0 0 5px ${tgtColor.wire})` }}
+          >
+            <animateMotion path={pathD} dur="2.4s" repeatCount="indefinite" begin={delayStr} />
+          </circle>
+        )}
       </svg>
     );
   }
@@ -992,14 +1057,22 @@ export function LoopTopology() {
     devStatus: string | null,
     flowDelay: string,
     key: string,
-    isLastDevice: boolean
+    wireType: "full" | "top-to-center" | "center-to-bottom",
+    isStatic?: boolean
   ) {
     const color = branchColors[colIdx] || branchColors[0];
-    const wireColor = devStatus === "alarm" ? "#ff4d5e" : color.wire;
-    const glowColor = devStatus === "alarm" ? "rgba(255,77,94,0.5)" : color.glow;
+    const wireColor = isStatic ? "rgba(103, 224, 255, 0.12)" : (devStatus === "alarm" ? "#ff4d5e" : color.wire);
+    const glowColor = isStatic ? "transparent" : (devStatus === "alarm" ? "rgba(255,77,94,0.5)" : color.glow);
 
-    // Last device has wire running only to the center (height=50), others run full cell (height=100)
-    const wireHeight = isLastDevice ? 50 : 100;
+    const wireY = wireType === "center-to-bottom" ? 50 : 0;
+    const wireHeight = wireType === "full" ? 100 : 50;
+
+    let pulseAnimation = "pulseDown 2s linear infinite";
+    if (wireType === "top-to-center") {
+      pulseAnimation = "pulseDownToHalf 2s linear infinite";
+    } else if (wireType === "center-to-bottom") {
+      pulseAnimation = "pulseHalfToBottom 2s linear infinite";
+    }
 
     return (
       <div className="vertical-wire-route-styled" key={key}>
@@ -1008,37 +1081,39 @@ export function LoopTopology() {
           style={{ width: "20px", height: "100%", position: "absolute", left: "50%", transform: "translateX(-50%)", top: 0 }}
         >
           <defs>
-            <linearGradient id={`vwire-${colIdx}-${devStatus}-${isLastDevice}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={wireColor} stopOpacity="0.7" />
-              <stop offset="50%" stopColor={wireColor} stopOpacity="1" />
-              <stop offset="100%" stopColor={wireColor} stopOpacity="0.7" />
+            <linearGradient id={`vwire-${colIdx}-${devStatus}-${wireType}-${isStatic}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={wireColor} stopOpacity={isStatic ? 0.35 : 0.7} />
+              <stop offset="50%" stopColor={wireColor} stopOpacity={isStatic ? 0.45 : 1} />
+              <stop offset="100%" stopColor={wireColor} stopOpacity={isStatic ? 0.35 : 0.7} />
             </linearGradient>
           </defs>
           {/* Outer glow track */}
-          <rect x="7" y="0" width="6" height={wireHeight} rx="3" fill={glowColor} opacity="0.3" />
+          {!isStatic && <rect x="7" y={wireY} width="6" height={wireHeight} rx="3" fill={glowColor} opacity="0.3" />}
           {/* Main colored pipe */}
-          <rect x="8" y="0" width="4" height={wireHeight} rx="2" fill={`url(#vwire-${colIdx}-${devStatus}-${isLastDevice})`} />
+          <rect x="8" y={wireY} width="4" height={wireHeight} rx="2" fill={`url(#vwire-${colIdx}-${devStatus}-${wireType}-${isStatic})`} />
           {/* Bright specular center line */}
-          <rect x="9.2" y="0" width="1.6" height={wireHeight} rx="0.8" fill="rgba(255,255,255,0.25)" />
+          <rect x="9.2" y={wireY} width="1.6" height={wireHeight} rx="0.8" fill={isStatic ? "transparent" : "rgba(255,255,255,0.25)"} />
         </svg>
         {/* Animated pulse dot */}
-        <div
-          className={`vertical-pulse-dot-styled ${devStatus || "empty"}`}
-          style={{
-            position: "absolute",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "10px",
-            height: "10px",
-            borderRadius: "50%",
-            background: wireColor,
-            boxShadow: `0 0 8px 2px ${wireColor}`,
-            animation: isLastDevice ? "pulseDownToHalf 2s linear infinite" : "pulseDown 2s linear infinite",
-            animationDelay: flowDelay,
-            zIndex: 2,
-            top: 0
-          }}
-        />
+        {!isStatic && (
+          <div
+            className={`vertical-pulse-dot-styled ${devStatus || "empty"}`}
+            style={{
+              position: "absolute",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: "10px",
+              height: "10px",
+              borderRadius: "50%",
+              background: wireColor,
+              boxShadow: `0 0 8px 2px ${wireColor}`,
+              animation: pulseAnimation,
+              animationDelay: flowDelay,
+              zIndex: 2,
+              top: 0
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -1368,10 +1443,11 @@ export function LoopTopology() {
                       <th className="row-index-header">安装顺序 / 物理位置</th>
                       {BRANCH_NAMES.map((name, idx) => {
                         if (!activeBranches[idx]) return null;
+                        const displayBranchNum = activeBranchIndices.indexOf(idx) + 1;
                         return (
                           <th key={idx} className="branch-col-header">
                             <div className="branch-header-content">
-                              <span className="branch-code">分支 #{idx + 1}</span>
+                              <span className="branch-code">分支 #{displayBranchNum}</span>
                               <span className="branch-name">{name}</span>
                             </div>
                           </th>
@@ -1380,53 +1456,128 @@ export function LoopTopology() {
                     </tr>
                   </thead>
                   <tbody>
-                    {/* HUB connection row at the very top (Parent node: 控制器) */}
+                    {/* Merged controller root node row: first column empty row-index-cell, second cell spans active branch columns */}
                     <tr className="hub-row" key="hub-row-parent">
-                      <td className="row-index-cell hub-label">主控机柜出线</td>
-                      
-                      {/* Column 0: Root Controller Out station (Simplified with 3D Cabinet Icon) */}
-                      {/* Branch 3 (col 2) & Branch 5 (col 4) orthogonal wires are rendered inside col 0 (source),
-                          starting from bottom-center of the hub cell, going right then down */}
-                      <td className="branch-cell-path parent-node-cell" style={{ position: "relative" }}>
-                        {/* Hub-to-Branch3 orthogonal wire (rendered in source col 0) */}
-                        {activeBranches[2] && (() => {
-                          const colSpan = domColIndex[2] - domColIndex[0];
-                          return renderOrthogonalBranchSVG(colSpan, branchColors[0], branchColors[2], "0.2s", "hub-split-b3");
-                        })()}
-                        {/* Hub-to-Branch5 orthogonal wire (rendered in source col 0) */}
-                        {activeBranches[4] && (() => {
-                          const colSpan = domColIndex[4] - domColIndex[0];
-                          return renderOrthogonalBranchSVG(colSpan, branchColors[0], branchColors[4], "0.4s", "hub-split-b5");
-                        })()}
+                      <td className="row-index-cell" style={{ height: "120px", background: "rgba(10, 24, 44, 0.6)", borderRight: "none" }}></td>
+                      <td
+                        colSpan={activeBranchCount}
+                        className="parent-node-cell-merged"
+                        style={{ position: "relative", padding: "28px 10px", minHeight: "120px", height: "120px", background: "rgba(10, 24, 44, 0.6)", textAlign: "center", borderLeft: "none" }}
+                      >
+                        {/* Overlay wire routing system inside the merged cell */}
+                        <div className="merged-wire-overlay" style={{
+                          position: "absolute",
+                          left: "0", // Align to branch column area directly
+                          right: "0",
+                          top: "0",
+                          bottom: "0",
+                          pointerEvents: "none"
+                        }}>
+                          <svg
+                            viewBox="0 0 100 100"
+                            preserveAspectRatio="none"
+                            style={{ width: "100%", height: "100%", overflow: "visible" }}
+                          >
+                            {activeBranchIndices.map((bIdx, domIdx) => {
+                              const N = activeBranchCount;
+                              const getX = (i: number) => ((i + 0.5) / N) * 100;
+                              const xTgt = getX(domIdx);
+                              
+                              // Path goes from the center cabinet output (x=50, y=25) down to y=65,
+                              // horizontally along the bus line to the branch's column center (xTgt),
+                              // and then vertically down into the column below (y=100)
+                              const pathD = `M 50 25 L 50 65 L ${xTgt} 65 L ${xTgt} 100`;
 
-                        <div className="vertical-wire-route root-wire" />
-                        <div className="table-flow-node root-station-node" onClick={() => selectTopologyAddr(undefined)}>
-                          <div className="root-station-layout">
-                            <div className="parent-cabinet-wrapper">
-                              {renderParentCabinetIcon()}
-                            </div>
-                            <div className="parent-cabinet-meta">
-                              <span className="parent-label">回路源头</span>
-                              <strong>1# 控制器柜</strong>
+                              const color = branchColors[bIdx] || branchColors[0];
+                              const isStatic = bIdx === 2 || bIdx === 3;
+                              const wireColor = isStatic ? "rgba(103, 224, 255, 0.12)" : color.wire;
+
+                              return (
+                                <g key={`hub-wire-${bIdx}`}>
+                                  {/* Wide outer glow / shadow */}
+                                  {!isStatic && (
+                                    <path
+                                      d={pathD}
+                                      fill="none"
+                                      stroke={color.shadow}
+                                      strokeWidth="5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      opacity="0.25"
+                                      vectorEffect="non-scaling-stroke"
+                                    />
+                                  )}
+                                  {/* Main colored pipe */}
+                                  <path
+                                    d={pathD}
+                                    fill="none"
+                                    stroke={wireColor}
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    vectorEffect="non-scaling-stroke"
+                                    style={isStatic ? undefined : { filter: `drop-shadow(0 0 2px ${color.wire})` }}
+                                  />
+                                  {/* Specular highlight */}
+                                  <path
+                                    d={pathD}
+                                    fill="none"
+                                    stroke={isStatic ? "transparent" : "rgba(255,255,255,0.35)"}
+                                    strokeWidth="0.8"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    vectorEffect="non-scaling-stroke"
+                                  />
+                                  {/* T-junction center marker at y=65 */}
+                                  <circle
+                                    cx="50"
+                                    cy="65"
+                                    r="2"
+                                    fill={isStatic ? "rgba(103, 224, 255, 0.2)" : "#4de7ff"}
+                                    vectorEffect="non-scaling-stroke"
+                                  />
+                                  {/* Pulsing motion dot — nested SVG to prevent stretching (10px diameter, r=5) */}
+                                  {!isStatic && (
+                                    <g>
+                                      <animateMotion path={pathD} dur="2s" repeatCount="indefinite" begin={`${domIdx * 0.2}s`} />
+                                      <svg width="10" height="10" viewBox="0 0 10 10" x="-5" y="-5" style={{ overflow: "visible" }}>
+                                        <circle cx="5" cy="5" r="5" fill={color.pulse} opacity="0.9" style={{ filter: `drop-shadow(0 0 4px ${color.wire})` }} />
+                                      </svg>
+                                    </g>
+                                  )}
+                                </g>
+                              );
+                            })}
+                          </svg>
+                        </div>
+
+                        {/* Centered cabinet controller card — absolutely centered relative to branch columns */}
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "50%",
+                            left: "50%",
+                            transform: "translate(-50%, -50%)",
+                            zIndex: 10,
+                          }}
+                        >
+                          <div
+                            className="table-flow-node root-station-node"
+                            onClick={() => selectTopologyAddr(undefined)}
+                            style={{ width: "240px" }}
+                          >
+                            <div className="root-station-layout">
+                              <div className="parent-cabinet-wrapper">
+                                {renderParentCabinetIcon()}
+                              </div>
+                              <div className="parent-cabinet-meta">
+                                <span className="parent-label">回路源头</span>
+                                <strong>1# 控制器柜</strong>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </td>
-
-                      {/* Render remaining columns in Row 0 (col 1, 2, 3, 4) — no wires here since they originate in col 0 */}
-                      {BRANCH_NAMES.map((_, colIdx) => {
-                        if (colIdx === 0 || !activeBranches[colIdx]) return null;
-                        return (
-                          <td key={colIdx} className="branch-cell-path cell-empty-wire">
-                            {/* Wire enters from above (drawn in prev col) — show receiving connector dot */}
-                            {(colIdx === 2 || colIdx === 4) && (
-                              <div className="empty-wire-connector" key={`hub-empty-${colIdx}`}>
-                                <div className="connector-dot" style={{ background: branchColors[colIdx].wire, boxShadow: `0 0 6px ${branchColors[colIdx].wire}` }} />
-                              </div>
-                            )}
-                          </td>
-                        );
-                      })}
                     </tr>
 
                     {/* Positions 1 to 6 on each branch */}
@@ -1470,31 +1621,37 @@ export function LoopTopology() {
                               const startRow = colIdx === 1 ? 2 : (colIdx === 3 ? 3 : 1);
                               const lastRow = lastDeviceRowInCol[colIdx];
                               
-                              // We only render vertical wires if the current row is within the active device range
+                              // We render vertical wire if the current row is within the active device range
                               const hasVerticalWire = 
                                 lastRow !== -1 && 
                                 rowIdx >= startRow && 
                                 rowIdx <= lastRow;
 
-                              // If it is the last device row in this column, we only draw a half-height wire
-                              const isLastDevice = rowIdx === lastRow;
+                              // Determine wire type for cell (rowIdx, colIdx)
+                              let wireType: "full" | "top-to-center" | "center-to-bottom" = "full";
+                              if (rowIdx === lastRow) {
+                                wireType = "top-to-center";     // Last device in column
+                              }
 
-                              // Branch 2 split: rendered in SOURCE column (col 0) at row 1.
-                              // The wire starts at the BOTTOM of this cell (between node 1 and node 2 of Branch 1),
-                              // goes horizontal to Branch 2 column, then turns 90° down.
+                              // Branch 2 split: splits from Branch 1 (col 0, #3) to Branch 2 (col 1, #92) at Row 1.
+                              // Rendered inside source column (colIdx === 0) at Row 1.
                               const isBranch2SplitSource = rowIdx === 1 && colIdx === 0 && activeBranches[1];
 
-                              // Branch 4 split: rendered in SOURCE column (col 2) at row 2.
-                              // Wire starts at bottom of this cell (between node 2 and 3 of Branch 3),
-                              // goes horizontal to Branch 4 column, then turns 90° down.
+                              // Branch 4 split: rendered in SOURCE column (col 2) at row 2, goes rightward to Column 3.
                               const isBranch4SplitSource = rowIdx === 2 && colIdx === 2 && activeBranches[3];
 
                               // Cascade animation delays for pulsing dot in standard vertical lines
                               let flowDelay = "0s";
                               if (colIdx === 0) {
-                                flowDelay = `${rowIdx * 0.45}s`;
+                                if (rowIdx === 1) {
+                                  flowDelay = "0.45s";
+                                } else {
+                                  // Continuous cascade flow delay
+                                  flowDelay = `${rowIdx * 0.45}s`;
+                                }
                               } else if (colIdx === 1 && rowIdx >= 2) {
-                                flowDelay = `${1.05 + (rowIdx - 1) * 0.45}s`;
+                                // Fed from Col 0, Row 1 (#3) at 0.45s, signal reaches Col 1 at 0.65s
+                                flowDelay = `${0.65 + (rowIdx - 2) * 0.45}s`;
                               } else if (colIdx === 2) {
                                 flowDelay = `${0.2 + rowIdx * 0.45}s`;
                               } else if (colIdx === 3 && rowIdx >= 3) {
@@ -1505,23 +1662,27 @@ export function LoopTopology() {
 
                               return (
                                 <td key={colIdx} className="branch-cell-path" style={{ position: "relative" }}>
-                                  {/* Render thick colored vertical wire with stable keys and half-height check */}
+                                  {/* Render thick colored vertical wire with stable keys and wire segment control */}
                                   {hasVerticalWire && renderVerticalWire(
                                     colIdx,
                                     dev?.status || null,
                                     flowDelay,
                                     `vwire-${rowIdx}-${colIdx}`,
-                                    isLastDevice
+                                    wireType,
+                                    colIdx === 2 || colIdx === 3
                                   )}
 
-                                  {/* Branch 2 split: SOURCE is col 0, row 1 — wire departs from bottom-center of this cell */}
+                                  {/* Branch 2 split: source is col 0, row 1 — wire departs rightward to col 1 (target) */}
                                   {isBranch2SplitSource && (
                                     renderOrthogonalBranchSVG(
                                       domColIndex[1] - domColIndex[0],
                                       branchColors[0],
                                       branchColors[1],
-                                      "1.05s",
-                                      `split-b2-${rowIdx}`
+                                      "0.45s",
+                                      `split-b2-${rowIdx}`,
+                                      false,
+                                      false,
+                                      true
                                     )
                                   )}
 
@@ -1532,7 +1693,10 @@ export function LoopTopology() {
                                       branchColors[2],
                                       branchColors[3],
                                       "1.70s",
-                                      `split-b4-${rowIdx}`
+                                      `split-b4-${rowIdx}`,
+                                      false,
+                                      true,
+                                      true
                                     )
                                   )}
 
@@ -1601,7 +1765,7 @@ export function LoopTopology() {
                                     </div>
                                   ) : (
                                     // Render empty wire connector node
-                                    hasVerticalWire && !isLastDevice && (
+                                    hasVerticalWire && rowIdx !== lastRow && (
                                       <div className="empty-wire-connector" key={`empty-conn-${rowIdx}-${colIdx}`}>
                                         <div className="connector-dot" />
                                       </div>
