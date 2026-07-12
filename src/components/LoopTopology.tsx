@@ -946,11 +946,15 @@ export function LoopTopology() {
 
     const wireStroke = isStatic ? "rgba(103, 224, 255, 0.12)" : `url(#${gradId})`;
 
+    // Calculate percentage-based coordinates for HTML divs to prevent SVG stretching
+    const srcCenterX_pct = (srcCenterX / svgWidth) * 100;
+    const tgtCenterX_pct = (tgtCenterX / svgWidth) * 100;
+    const midY_pct = (midY / endY) * 100;
+    const endY_pct = 100;
+
     return (
-      <svg
+      <div
         key={key}
-        className="curved-branch-svg"
-        viewBox={`0 0 ${svgWidth} ${endY}`}
         style={{
           position: "absolute",
           top: 0,
@@ -959,91 +963,166 @@ export function LoopTopology() {
           height: `${(endY / 100) * 100}%`, // Adjust vertical height dynamically
           pointerEvents: "none",
           zIndex: 3,
-          overflow: "visible"
         }}
       >
-        <defs>
-          {!isStatic && (
-            <>
-              {/* Gradient transitioning from source branch color to target branch color */}
-              <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%"   stopColor={srcColor.wire} />
-                <stop offset="100%" stopColor={tgtColor.wire} />
-              </linearGradient>
-              {/* Glow filter for the target-side wire */}
-              <filter id={glowId} x="-60%" y="-60%" width="220%" height="220%">
-                <feGaussianBlur stdDeviation="3.5" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </>
-          )}
-        </defs>
+        <style dangerouslySetInnerHTML={{ __html: `
+          @keyframes pulseSplit-${key} {
+            0% { left: ${srcCenterX_pct}%; top: ${midY_pct}%; opacity: 0; }
+            5% { left: ${srcCenterX_pct}%; top: ${midY_pct}%; opacity: 1; }
+            50% { left: ${tgtCenterX_pct}%; top: ${midY_pct}%; }
+            95% { left: ${tgtCenterX_pct}%; top: ${endY_pct}%; opacity: 1; }
+            100% { left: ${tgtCenterX_pct}%; top: ${endY_pct}%; opacity: 0; }
+          }
+        `}} />
 
-        {/* ─── Layer 1: wide outer glow / shadow ─── */}
-        {!isStatic && (
+        <svg
+          viewBox={`0 0 ${svgWidth} ${endY}`}
+          preserveAspectRatio="none"
+          style={{
+            width: "100%",
+            height: "100%",
+            overflow: "visible",
+            display: "block"
+          }}
+        >
+          <defs>
+            {!isStatic && (
+              <>
+                {/* Gradient transitioning from source branch color to target branch color */}
+                <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%"   stopColor={srcColor.wire} />
+                  <stop offset="100%" stopColor={tgtColor.wire} />
+                </linearGradient>
+                {/* Glow filter for the target-side wire */}
+                <filter id={glowId} x="-60%" y="-60%" width="220%" height="220%">
+                  <feGaussianBlur stdDeviation="3.5" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </>
+            )}
+          </defs>
+
+          {/* ─── Layer 1: wide outer glow / shadow ─── */}
+          {!isStatic && (
+            <path d={pathD} fill="none"
+              stroke={tgtColor.shadow} strokeWidth="5"
+              strokeLinecap="round" strokeLinejoin="round" opacity="0.25"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+
+          {/* ─── Layer 2: main gradient wire ─── */}
           <path d={pathD} fill="none"
-            stroke={tgtColor.shadow} strokeWidth="5"
-            strokeLinecap="round" strokeLinejoin="round" opacity="0.25"
+            stroke={wireStroke} strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round"
+            filter={isStatic ? undefined : `url(#${glowId})`}
             vectorEffect="non-scaling-stroke"
           />
-        )}
 
-        {/* ─── Layer 2: main gradient wire ─── */}
-        <path d={pathD} fill="none"
-          stroke={wireStroke} strokeWidth="2.5"
-          strokeLinecap="round" strokeLinejoin="round"
-          filter={isStatic ? undefined : `url(#${glowId})`}
-          vectorEffect="non-scaling-stroke"
-        />
-
-        {/* ─── Layer 3: inner specular highlight ─── */}
-        <path d={pathD} fill="none"
-          stroke={isStatic ? "transparent" : "rgba(255,255,255,0.35)"} strokeWidth="0.8"
-          strokeLinecap="round" strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
+          {/* ─── Layer 3: inner specular highlight ─── */}
+          <path d={pathD} fill="none"
+            stroke={isStatic ? "transparent" : "rgba(255,255,255,0.35)"} strokeWidth="0.8"
+            strokeLinecap="round" strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
 
         {/* ─── T-junction marker: glowing circle at source device icon position ─── */}
-        <circle
-          cx={srcCenterX} cy={midY} r="5"
-          fill={isStatic ? "rgba(103, 224, 255, 0.2)" : srcColor.wire}
-          style={isStatic ? undefined : { filter: `drop-shadow(0 0 4px ${srcColor.wire}) drop-shadow(0 0 8px ${srcColor.wire})` }}
-        />
-        {/* Inner bright core */}
-        <circle cx={srcCenterX} cy={midY} r="2.5" fill={isStatic ? "rgba(103, 224, 255, 0.4)" : "white"} opacity="0.85" />
+        <div style={{
+          position: "absolute",
+          left: `${srcCenterX_pct}%`,
+          top: `${midY_pct}%`,
+          width: "10px",
+          height: "10px",
+          borderRadius: "50%",
+          background: isStatic ? "rgba(103, 224, 255, 0.2)" : srcColor.wire,
+          boxShadow: isStatic ? undefined : `0 0 4px ${srcColor.wire}, 0 0 8px ${srcColor.wire}`,
+          transform: "translate(-5px, -5px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 4
+        }}>
+          <div style={{
+            width: "5px",
+            height: "5px",
+            borderRadius: "50%",
+            background: isStatic ? "rgba(103, 224, 255, 0.4)" : "white",
+            opacity: 0.85
+          }} />
+        </div>
 
         {/* ─── Corner bend marker at 90° turn point ─── */}
-        <circle
-          cx={tgtCenterX} cy={midY} r="4"
-          fill={isStatic ? "rgba(103, 224, 255, 0.2)" : tgtColor.wire}
-          style={isStatic ? undefined : { filter: `drop-shadow(0 0 4px ${tgtColor.wire})` }}
-        />
-        <circle cx={tgtCenterX} cy={midY} r="2" fill={isStatic ? "rgba(103, 224, 255, 0.4)" : "white"} opacity="0.75" />
+        <div style={{
+          position: "absolute",
+          left: `${tgtCenterX_pct}%`,
+          top: `${midY_pct}%`,
+          width: "8px",
+          height: "8px",
+          borderRadius: "50%",
+          background: isStatic ? "rgba(103, 224, 255, 0.2)" : tgtColor.wire,
+          boxShadow: isStatic ? undefined : `0 0 4px ${tgtColor.wire}`,
+          transform: "translate(-4px, -4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 4
+        }}>
+          <div style={{
+            width: "4px",
+            height: "4px",
+            borderRadius: "50%",
+            background: isStatic ? "rgba(103, 224, 255, 0.4)" : "white",
+            opacity: 0.75
+          }} />
+        </div>
 
         {/* ─── End marker at target device icon position ─── */}
         {connectCardEdges && (
-          <>
-            <circle
-              cx={tgtCenterX} cy={endY} r="5"
-              fill={isStatic ? "rgba(103, 224, 255, 0.2)" : tgtColor.wire}
-              style={isStatic ? undefined : { filter: `drop-shadow(0 0 4px ${tgtColor.wire}) drop-shadow(0 0 8px ${tgtColor.wire})` }}
-            />
-            <circle cx={tgtCenterX} cy={endY} r="2.5" fill={isStatic ? "rgba(103, 224, 255, 0.4)" : "white"} opacity="0.85" />
-          </>
+          <div style={{
+            position: "absolute",
+            left: `${tgtCenterX_pct}%`,
+            top: `${endY_pct}%`,
+            width: "10px",
+            height: "10px",
+            borderRadius: "50%",
+            background: isStatic ? "rgba(103, 224, 255, 0.2)" : tgtColor.wire,
+            boxShadow: isStatic ? undefined : `0 0 4px ${tgtColor.wire}, 0 0 8px ${tgtColor.wire}`,
+            transform: "translate(-5px, -5px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 4
+          }}>
+            <div style={{
+              width: "5px",
+              height: "5px",
+              borderRadius: "50%",
+              background: isStatic ? "rgba(103, 224, 255, 0.4)" : "white",
+              opacity: 0.85
+            }} />
+          </div>
         )}
 
         {/* ─── Pulsing signal dot flowing along the L-path ─── */}
         {!isStatic && (
-          <circle r="4" fill={tgtColor.pulse} opacity="0.9"
-            style={{ filter: `drop-shadow(0 0 5px ${tgtColor.wire})` }}
-          >
-            <animateMotion path={pathD} dur="2.4s" repeatCount="indefinite" begin={delayStr} />
-          </circle>
+          <div style={{
+            position: "absolute",
+            width: "10px",
+            height: "10px",
+            borderRadius: "50%",
+            background: tgtColor.pulse,
+            boxShadow: `0 0 8px 2px ${tgtColor.wire}`,
+            animation: `pulseSplit-${key} 2.4s linear infinite`,
+            animationDelay: delayStr,
+            transform: "translate(-5px, -5px)",
+            zIndex: 5
+          }} />
         )}
-      </svg>
+      </div>
     );
   }
 
@@ -1473,6 +1552,22 @@ export function LoopTopology() {
                           bottom: "0",
                           pointerEvents: "none"
                         }}>
+                          <style dangerouslySetInnerHTML={{ __html: activeBranchIndices.map((bIdx, domIdx) => {
+                            const N = activeBranchCount;
+                            const getX = (i: number) => ((i + 0.5) / N) * 100;
+                            const xTgt = getX(domIdx);
+                            return `
+                              @keyframes pulseHubPath-${bIdx} {
+                                0% { left: 50%; top: 25px; opacity: 0; }
+                                5% { left: 50%; top: 25px; opacity: 1; }
+                                25% { left: 50%; top: 65px; }
+                                75% { left: ${xTgt}%; top: 65px; }
+                                95% { left: ${xTgt}%; top: 120px; opacity: 1; }
+                                100% { left: ${xTgt}%; top: 120px; opacity: 0; }
+                              }
+                            `;
+                          }).join("\n") }} />
+
                           <svg
                             viewBox="0 0 100 100"
                             preserveAspectRatio="none"
@@ -1536,19 +1631,35 @@ export function LoopTopology() {
                                     fill={isStatic ? "rgba(103, 224, 255, 0.2)" : "#4de7ff"}
                                     vectorEffect="non-scaling-stroke"
                                   />
-                                  {/* Pulsing motion dot — nested SVG to prevent stretching (10px diameter, r=5) */}
-                                  {!isStatic && (
-                                    <g>
-                                      <animateMotion path={pathD} dur="2s" repeatCount="indefinite" begin={`${domIdx * 0.2}s`} />
-                                      <svg width="10" height="10" viewBox="0 0 10 10" x="-5" y="-5" style={{ overflow: "visible" }}>
-                                        <circle cx="5" cy="5" r="5" fill={color.pulse} opacity="0.9" style={{ filter: `drop-shadow(0 0 4px ${color.wire})` }} />
-                                      </svg>
-                                    </g>
-                                  )}
                                 </g>
                               );
                             })}
                           </svg>
+
+                          {/* Pulsing motion dots as absolute HTML divs to prevent stretching */}
+                          {activeBranchIndices.map((bIdx, domIdx) => {
+                            const color = branchColors[bIdx] || branchColors[0];
+                            const isStatic = bIdx === 2 || bIdx === 3;
+                            if (isStatic) return null;
+
+                            return (
+                              <div
+                                key={`hub-pulse-${bIdx}`}
+                                style={{
+                                  position: "absolute",
+                                  width: "10px",
+                                  height: "10px",
+                                  borderRadius: "50%",
+                                  background: color.pulse,
+                                  boxShadow: `0 0 8px 2px ${color.wire}`,
+                                  animation: `pulseHubPath-${bIdx} 2s linear infinite`,
+                                  animationDelay: `${domIdx * 0.2}s`,
+                                  transform: "translate(-5px, -5px)",
+                                  zIndex: 5
+                                }}
+                              />
+                            );
+                          })}
                         </div>
 
                         {/* Centered cabinet controller card — absolutely centered relative to branch columns */}
