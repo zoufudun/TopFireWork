@@ -414,6 +414,32 @@ function generateMockControllers(): ControllerNode[] {
     modules: c3Modules
   });
 
+  // Post-processing to fill serialNumber, personalityCode and location
+  controllers.forEach((c) => {
+    c.modules.forEach((m) => {
+      m.loops.forEach((l) => {
+        Object.values(l.devices).forEach((d) => {
+          d.serialNumber = `SN-${c.address.toString().padStart(2, "0")}${m.index}${l.loopNumber}${d.address.toString().padStart(4, "0")}`;
+          d.personalityCode = `PC-${d.address.toString().padStart(3, "0")}-${c.id}`;
+          
+          let floorName = "3F";
+          let zoneName = "东区走廊";
+          if (d.address % 3 === 0) {
+            floorName = "1F";
+            zoneName = "西侧大厅";
+          } else if (d.address % 3 === 1) {
+            floorName = "2F";
+            zoneName = "中区会议室";
+          } else {
+            floorName = "3F";
+            zoneName = "北侧配电房";
+          }
+          d.location = `${floorName} - ${zoneName} - ${d.address}号物理定位点`;
+        });
+      });
+    });
+  });
+
   return controllers;
 }
 

@@ -197,7 +197,7 @@ export const useFireStore = create<FireState>((set) => ({
                       status,
                       value: value !== undefined ? value : dev.value,
                       lastSeen: new Date().toISOString()
-                    }
+                    } as TopologyDevice
                   }
                 };
               })
@@ -261,10 +261,10 @@ export const useFireStore = create<FireState>((set) => ({
                     ...l.devices,
                     [addr]: {
                       ...dev,
-                      status: "alarm",
+                      status: "alarm" as DeviceStatus,
                       value: dev.type === "smoke" ? 72.5 : dev.type === "temperature" ? 58.6 : undefined,
                       lastSeen: time
-                    }
+                    } as TopologyDevice
                   }
                 };
               })
@@ -306,9 +306,9 @@ export const useFireStore = create<FireState>((set) => ({
                     ...l.devices,
                     [addr]: {
                       ...dev,
-                      status: "offline",
+                      status: "offline" as DeviceStatus,
                       lastSeen: time
-                    }
+                    } as TopologyDevice
                   }
                 };
               })
@@ -373,10 +373,10 @@ export const useFireStore = create<FireState>((set) => ({
                     ...l.devices,
                     [addr]: {
                       ...dev,
-                      status: "online",
+                      status: "online" as DeviceStatus,
                       value: dev.type === "smoke" ? 9.5 : dev.type === "temperature" ? 21.3 : undefined,
                       lastSeen: time
-                    }
+                    } as TopologyDevice
                   }
                 };
               })

@@ -106,6 +106,9 @@ export interface TopologyDevice {
   value?: number;
   unit?: string;
   lastSeen?: string;
+  serialNumber?: string;
+  personalityCode?: string;
+  location?: string;
 }
 
 export interface FireLoop {
