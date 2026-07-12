@@ -2772,6 +2772,59 @@ button {
   margin-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   padding-top: 4px;
+}/* Styled thick vertical wire container for each branch column */
+.vertical-wire-route-styled {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
 }
 
+/* Pulse dot animation flowing downward */
+@keyframes pulseDown {
+  0% {
+    top: -5px;
+    opacity: 0.9;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    top: calc(100% + 5px);
+    opacity: 0;
+  }
+}
 
+/* Pulse dot animation flowing downward to half height (last device) */
+@keyframes pulseDownToHalf {
+  0% {
+    top: -5px;
+    opacity: 0.9;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    top: 50%;
+    opacity: 0;
+  }
+}
+
+/* Override branch-cell-path to be position:relative for SVG overlays */
+.branch-cell-path {
+  position: relative;
+  overflow: visible !important;
+}
+
+/* Ensure branch SVG wires can overflow into adjacent cells */
+.branch-topology-table {
+  overflow: visible;
+}
+.table-branch-wrapper {
+  overflow-x: auto;
+  overflow-y: visible;
+}
