@@ -85,11 +85,39 @@ export function Overview() {
 
           {/* Animated CSS Flame Graphics */}
           <div className="fire-flame-panel">
-            <div className="flame-particle p1" />
-            <div className="flame-particle p2" />
-            <div className="flame-particle p3" />
-            <div className="flame-particle p4" />
+            <div className="flame-wrapper">
+              <div className="flame-outer" />
+              <div className="flame-main" />
+              <div className="flame-core" />
+            </div>
           </div>
+
+          {/* Full-screen floating sparks overlay */}
+          {hasFire && (
+            <div className="fire-embers-overlay">
+              {Array.from({ length: 35 }).map((_, i) => {
+                const size = Math.random() * 5 + 3; // 3px to 8px
+                const left = Math.random() * 100; // 0% to 100%
+                const delay = Math.random() * 6; // 0s to 6s
+                const duration = Math.random() * 4 + 4; // 4s to 8s
+                const sway = (Math.random() * 80 - 40) + "px"; // -40px to 40px
+                return (
+                  <div
+                    key={i}
+                    className="ember-particle"
+                    style={{
+                      left: `${left}%`,
+                      width: `${size}px`,
+                      height: `${size}px`,
+                      animationDelay: `${delay}s`,
+                      animationDuration: `${duration}s`,
+                      ...({ "--sway": sway } as React.CSSProperties)
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
 
           <div className="alarm-locations-list">
             <strong>火灾报警物理点位列表：</strong>

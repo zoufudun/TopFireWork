@@ -128,10 +128,10 @@ export function LoopTopology() {
       ? currentLoop.devices[selectedTopologyAddr]
       : undefined;
 
-  // Find any active smoke or temperature detector alarms on the current loop
+  // Find any active smoke, temperature, or manual fire alarms on the current loop
   const loopFireDevices = currentLoop
     ? Object.values(currentLoop.devices).filter(
-        (d) => d.status === "alarm" && (d.type === "smoke" || d.type === "temperature")
+        (d) => d.status === "alarm" && (d.type === "smoke" || d.type === "temperature" || d.type === "manual")
       )
     : [];
   const hasLoopFire = loopFireDevices.length > 0;
@@ -1467,6 +1467,33 @@ export function LoopTopology() {
               </div>
             </div>
 
+            {/* Full-screen floating sparks overlay */}
+            {hasLoopFire && (
+              <div className="fire-embers-overlay">
+                {Array.from({ length: 35 }).map((_, i) => {
+                  const size = Math.random() * 5 + 3; // 3px to 8px
+                  const left = Math.random() * 100; // 0% to 100%
+                  const delay = Math.random() * 6; // 0s to 6s
+                  const duration = Math.random() * 4 + 4; // 4s to 8s
+                  const sway = (Math.random() * 80 - 40) + "px"; // -40px to 40px
+                  return (
+                    <div
+                      key={i}
+                      className="ember-particle"
+                      style={{
+                        left: `${left}%`,
+                        width: `${size}px`,
+                        height: `${size}px`,
+                        animationDelay: `${delay}s`,
+                        animationDuration: `${duration}s`,
+                        ...({ "--sway": sway } as React.CSSProperties)
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
             {/* High-visibility Urgent Fire Alarm Command Banner (Smoke & Temp Detectors) */}
             {hasLoopFire && (
               <div className="emergency-fire-banner animate-pulse-glow">
@@ -1480,10 +1507,11 @@ export function LoopTopology() {
 
                 {/* Animated CSS Fire Flame element */}
                 <div className="fire-flame-panel">
-                  <div className="flame-particle p1" />
-                  <div className="flame-particle p2" />
-                  <div className="flame-particle p3" />
-                  <div className="flame-particle p4" />
+                  <div className="flame-wrapper">
+                    <div className="flame-outer" />
+                    <div className="flame-main" />
+                    <div className="flame-core" />
+                  </div>
                 </div>
 
                 <div className="alarm-locations-list">
@@ -1491,7 +1519,7 @@ export function LoopTopology() {
                   {loopFireDevices.map((dev) => (
                     <div key={dev.address} className="alarm-location-item">
                       <span className="loc-text">
-                        [{dev.type === "smoke" ? "烟感火警" : "温感火警"}] 地址 #{dev.address} - {dev.location || "配电间区域"} ({dev.name})
+                        [{dev.type === "smoke" ? "烟感火警" : dev.type === "temperature" ? "温感火警" : "手报火警"}] 地址 #{dev.address} - {dev.location || "配电间区域"} ({dev.name})
                       </span>
                       <button
                         className="quick-locate-btn"
@@ -1510,9 +1538,8 @@ export function LoopTopology() {
               <div className="diagram-hdr">
                 <div className="indicator">
                   <Activity size={16} className="icon-pulse text-cyan" />
-                  <strong style={{ fontSize: "14px" }}>回路树形分支布线接线连接图 (直角90度分流实际安装拓扑)</strong>
+                  <strong style={{ fontSize: "14px" }}>回路树形分支布线接线连接图</strong>
                 </div>
-                <span className="muted">分支敷设规则：直角90度分线接线，仅渲染存在设备的分支线路</span>
               </div>
               
               <div className="table-branch-wrapper" key="topology-table-scroller">
@@ -1527,7 +1554,6 @@ export function LoopTopology() {
                           <th key={idx} className="branch-col-header">
                             <div className="branch-header-content">
                               <span className="branch-code">分支 #{displayBranchNum}</span>
-                              <span className="branch-name">{name}</span>
                             </div>
                           </th>
                         );
@@ -1558,12 +1584,12 @@ export function LoopTopology() {
                             const xTgt = getX(domIdx);
                             return `
                               @keyframes pulseHubPath-${bIdx} {
-                                0% { left: 50%; top: 25px; opacity: 0; }
-                                5% { left: 50%; top: 25px; opacity: 1; }
-                                25% { left: 50%; top: 65px; }
-                                75% { left: ${xTgt}%; top: 65px; }
-                                95% { left: ${xTgt}%; top: 120px; opacity: 1; }
-                                100% { left: ${xTgt}%; top: 120px; opacity: 0; }
+                                0% { left: 50%; top: 25%; opacity: 0; }
+                                5% { left: 50%; top: 25%; opacity: 1; }
+                                25% { left: 50%; top: 65%; }
+                                75% { left: ${xTgt}%; top: 65%; }
+                                95% { left: ${xTgt}%; top: 100%; opacity: 1; }
+                                100% { left: ${xTgt}%; top: 100%; opacity: 0; }
                               }
                             `;
                           }).join("\n") }} />
@@ -1702,7 +1728,7 @@ export function LoopTopology() {
                           <tr key={rowIdx}>
                             {/* Left Row Header showing position */}
                             <td className="row-index-cell">
-                              <div className="pos-badge">第 {rowIdx} 级安装节点</div>
+                              <div className="pos-badge">节点 #{rowIdx}</div>
                             </td>
 
                             {/* Dynamic Columns (Branches) */}
@@ -1814,7 +1840,7 @@ export function LoopTopology() {
                                   {dev ? (
                                     <div
                                       key={`dev-card-${dev.id}`}
-                                      className={`table-flow-node three-d-node node-${dev.status} ${isSelected ? "selected" : ""} ${isFilteredOut ? "dimmed" : ""} ${dev.status === "alarm" && (dev.type === "smoke" || dev.type === "temperature") ? "smoke-alarm-flash" : ""}`}
+                                      className={`table-flow-node three-d-node node-${dev.status} ${isSelected ? "selected" : ""} ${isFilteredOut ? "dimmed" : ""} ${dev.status === "alarm" && (dev.type === "smoke" || dev.type === "temperature" || dev.type === "manual") ? "smoke-alarm-flash" : ""}`}
                                       onClick={() => selectTopologyAddr(dev.address)}
                                     >
                                       <div className="node-layout-three-d">
