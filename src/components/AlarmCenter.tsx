@@ -656,65 +656,95 @@ export function AlarmCenter() {
                   onClick={() => selectAlarm(alarm.id)}
                   style={{
                     borderLeft: type === "fire" ? "4px solid #ff4d5e" : type === "fault" ? "4px solid #ffba52" : "4px solid #4de7ff",
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "12px 20px",
-                    borderBottom: "1px solid rgba(255,255,255,0.02)",
-                    position: "relative",
-                    overflow: "hidden"
+                    position: "relative"
                   }}
                 >
                   {type === "fire" && (
                     <div className="spark-container" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, overflow: "hidden", pointerEvents: "none" }}>
-                      {Array.from({ length: 5 }).map((_, i) => (
+                      {/* Fire spark embers — 12 particles */}
+                      {Array.from({ length: 12 }).map((_, i) => {
+                        const size = 2.5 + (i % 4) * 1.2;
+                        const col = i % 3 === 0 ? "#fff8a0" : i % 3 === 1 ? "#ff9500" : "#ff4d5e";
+                        const glow = i % 3 === 0 ? "rgba(255,248,160,0.95)" : i % 3 === 1 ? "rgba(255,149,0,0.95)" : "rgba(255,77,94,0.9)";
+                        return (
+                          <span
+                            key={`sp-${i}`}
+                            className="spark-particle"
+                            style={{
+                              position: "absolute",
+                              bottom: "-4px",
+                              left: `${6 + i * 8}%`,
+                              width: `${size}px`,
+                              height: `${size}px`,
+                              backgroundColor: col,
+                              borderRadius: "50%",
+                              boxShadow: `0 0 6px 2px ${glow}, 0 0 14px 4px ${glow.replace("0.9", "0.5")}`,
+                              animation: `sparkRise ${0.9 + (i % 4) * 0.25}s infinite ease-out`,
+                              animationDelay: `${i * 0.12}s`,
+                              // @ts-ignore
+                              "--drift": `${(i % 2 === 0 ? -1 : 1) * (8 + (i % 5) * 5)}px`
+                            }}
+                          />
+                        );
+                      })}
+                      {/* Smoke puffs — 4 translucent blobs rising */}
+                      {Array.from({ length: 4 }).map((_, i) => (
                         <span
-                          key={i}
-                          className="spark-particle"
+                          key={`sm-${i}`}
                           style={{
                             position: "absolute",
-                            bottom: "-4px",
-                            left: `${15 + i * 18}%`,
-                            width: `${2 + (i % 2)}px`,
-                            height: `${2 + (i % 2)}px`,
-                            backgroundColor: i % 2 === 0 ? "#ff7675" : "#ffbe76",
+                            bottom: "-6px",
+                            left: `${10 + i * 22}%`,
+                            width: `${18 + i * 8}px`,
+                            height: `${18 + i * 8}px`,
                             borderRadius: "50%",
-                            boxShadow: "0 0 4px rgba(255, 118, 117, 0.9), 0 0 8px rgba(255, 77, 94, 0.7)",
-                            animation: `sparkRise ${1.2 + (i % 3) * 0.3}s infinite ease-out`,
-                            animationDelay: `${i * 0.15}s`,
+                            background: "radial-gradient(circle, rgba(100,70,50,0.35) 0%, rgba(60,40,30,0.12) 60%, transparent 100%)",
+                            filter: "blur(5px)",
+                            animation: `sparkRise ${1.8 + i * 0.5}s infinite ease-out`,
+                            animationDelay: `${i * 0.4}s`,
                             // @ts-ignore
-                            "--drift": `${(i % 2 === 0 ? -12 : 12) + (i % 3) * 4}px`
+                            "--drift": `${(i % 2 === 0 ? -18 : 18) + i * 4}px`
                           }}
                         />
                       ))}
                     </div>
                   )}
+                  {/* Level badge — aligned to top */}
                   <span className="level-badge" style={{
                     background: type === "fire" ? "rgba(255, 77, 94, 0.2)" : type === "fault" ? "rgba(255, 186, 82, 0.2)" : "rgba(77, 231, 255, 0.2)",
                     color: type === "fire" ? "#ff4d5e" : type === "fault" ? "#ffba52" : "#4de7ff",
                     fontSize: "10px",
                     fontWeight: "bold",
-                    padding: "2px 6px",
+                    padding: "3px 6px",
                     borderRadius: "4px",
-                    minWidth: "60px",
-                    textAlign: "center"
+                    minWidth: "62px",
+                    textAlign: "center",
+                    display: "inline-block",
+                    marginTop: "1px"
                   }}>
                     {`L${alarm.level} · ${type === "fire" ? "火警" : type === "fault" ? "故障" : "提示"}`}
                   </span>
 
-                  <span className="alarm-main" style={{ flexGrow: 1, paddingLeft: "12px", textAlign: "left" }}>
-                    <strong className={type === "fire" ? "fire-flame-text" : undefined} style={{ fontSize: "13.5px", display: "inline-block" }}>
+                  {/* Main content — title + location info + device address */}
+                  <span className="alarm-main" style={{ paddingLeft: "10px" }}>
+                    <strong className={type === "fire" ? "fire-flame-text" : undefined} style={{ fontSize: "13px" }}>
                       {type === "fire" ? `🔥 ${alarm.title}` : alarm.title}
                     </strong>
-                    <small style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "var(--muted)" }}>
-                      {floorNames[alarm.floorId] || alarm.floorId} · {zoneNames[alarm.zoneId] || alarm.zoneId} | {resolveDeviceAddress(alarm.deviceId)}
+                    <small style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "var(--muted)", lineHeight: "1.5" }}>
+                      📍 {floorNames[alarm.floorId] || alarm.floorId} &nbsp;·&nbsp; {zoneNames[alarm.zoneId] || alarm.zoneId}
+                    </small>
+                    <small style={{ display: "block", marginTop: "2px", fontSize: "10.5px", color: "rgba(132, 154, 182, 0.7)", lineHeight: "1.4", fontFamily: "monospace" }}>
+                      {resolveDeviceAddress(alarm.deviceId)}
                     </small>
                   </span>
 
-                  <span className="alarm-time" style={{ fontSize: "11px", color: "var(--muted)", flexShrink: 0, padding: "0 10px" }}>
+                  {/* Time — aligned to top */}
+                  <span className="alarm-time" style={{ fontSize: "11px", color: "var(--muted)", flexShrink: 0, paddingTop: "2px", textAlign: "right", whiteSpace: "nowrap" }}>
                     {new Date(alarm.createdAt).toLocaleTimeString()}
                   </span>
 
-                  <span className={`status-tag ${alarm.status}`} style={{ flexShrink: 0 }}>
+                  {/* Status tag */}
+                  <span className={`status-tag ${alarm.status}`} style={{ flexShrink: 0, alignSelf: "start", marginTop: "0px" }}>
                     {statusLabels[alarm.status]}
                   </span>
                 </button>

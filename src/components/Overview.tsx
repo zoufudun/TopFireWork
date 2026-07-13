@@ -83,110 +83,68 @@ export function Overview() {
             </div>
           </div>
 
-          {/* Animated SVG Roaring Flame Graphics */}
-          <div className="fire-flame-panel" style={{ width: "240px", height: "130px", right: "20px", bottom: "-30px", overflow: "visible" }}>
-            <svg viewBox="0 0 100 120" style={{ width: "100%", height: "100%", overflow: "visible" }}>
+          {/* Realistic multi-layer animated vertical flame SVG */}
+          <div className="fire-flame-panel" style={{ width: "280px", height: "160px", right: "16px", bottom: "-20px", overflow: "visible" }}>
+            <svg viewBox="0 0 100 140" style={{ width: "100%", height: "100%", overflow: "visible" }}>
               <defs>
+                {/* Outer flame — deep red to transparent orange */}
                 <linearGradient id="flameOuterGrad" x1="0" y1="1" x2="0" y2="0">
-                  <stop offset="0%" stop-color="#990000" />
-                  <stop offset="30%" stop-color="#ff3b30" />
-                  <stop offset="70%" stop-color="#ff9500" />
-                  <stop offset="100%" stop-color="#ffcc00" stop-opacity="0" />
+                  <stop offset="0%" stopColor="#8B0000" />
+                  <stop offset="25%" stopColor="#cc2200" />
+                  <stop offset="55%" stopColor="#ff6600" />
+                  <stop offset="85%" stopColor="#ffaa00" stopOpacity="0.6" />
+                  <stop offset="100%" stopColor="#ffee00" stopOpacity="0" />
                 </linearGradient>
+                {/* Mid flame — orange */}
                 <linearGradient id="flameMainGrad" x1="0" y1="1" x2="0" y2="0">
-                  <stop offset="0%" stop-color="#ff5e00" />
-                  <stop offset="75%" stop-color="#ffcc00" />
-                  <stop offset="100%" stop-color="#ffcc00" stop-opacity="0" />
+                  <stop offset="0%" stopColor="#cc3300" />
+                  <stop offset="40%" stopColor="#ff6600" />
+                  <stop offset="75%" stopColor="#ffcc00" />
+                  <stop offset="100%" stopColor="#ffee88" stopOpacity="0" />
                 </linearGradient>
+                {/* Core — bright yellow-white */}
                 <linearGradient id="flameCoreGrad" x1="0" y1="1" x2="0" y2="0">
-                  <stop offset="0%" stop-color="#ffe600" />
-                  <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+                  <stop offset="0%" stopColor="#ff9900" />
+                  <stop offset="50%" stopColor="#ffee00" />
+                  <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
                 </linearGradient>
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
-                  <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                  </feMerge>
+                {/* Inner tip — white hot */}
+                <linearGradient id="flameTipGrad" x1="0" y1="1" x2="0" y2="0">
+                  <stop offset="0%" stopColor="#ffdd00" />
+                  <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+                </linearGradient>
+                <filter id="flameGlow">
+                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
                 </filter>
               </defs>
-              
-              {/* Layer 1: Outer Back Flame */}
-              <path d="M 50 110 C 20 110, 10 70, 42 20 C 45 40, 55 40, 58 20 C 90 70, 80 110, 50 110 Z" fill="url(#flameOuterGrad)" filter="url(#glow)" className="flame-outer" />
-              
-              {/* Layer 2: Main Middle Flame */}
-              <path d="M 50 110 C 28 110, 20 78, 45 35 C 47 48, 53 48, 55 35 C 80 78, 72 110, 50 110 Z" fill="url(#flameMainGrad)" filter="url(#glow)" className="flame-main" />
-              
-              {/* Layer 3: Inner Core */}
-              <path d="M 50 110 C 35 110, 30 85, 47 50 C 49 60, 51 60, 53 50 C 70 85, 65 110, 50 110 Z" fill="url(#flameCoreGrad)" className="flame-core" />
-            </svg>
 
-            {/* Local thick smoke particles inside the panel */}
-            <div style={{ position: "absolute", left: "0", right: "0", top: "0", bottom: "0", pointerEvents: "none", overflow: "hidden" }}>
-              {Array.from({ length: 8 }).map((_, idx) => (
-                <div key={idx} className="smoke-particle" style={{
-                  left: `${20 + Math.random() * 60}%`,
-                  width: `${30 + Math.random() * 30}px`,
-                  height: `${30 + Math.random() * 30}px`,
-                  bottom: "-10px",
-                  animationDuration: `${3 + Math.random() * 3}s`,
-                  animationDelay: `${idx * 0.4}s`,
-                  ...({ "--drift": `${Math.random() * 60 - 30}px` } as React.CSSProperties)
-                }} />
+              {/* Layer 1 — wide outer halo */}
+              <path d="M 50 130 C 5 130, -8 80, 30 28 C 34 52, 42 55, 46 28 C 50 8, 54 8, 58 28 C 62 55, 68 52, 72 28 C 105 80, 95 130, 50 130 Z"
+                fill="url(#flameOuterGrad)" filter="url(#flameGlow)" className="svg-flame-outer" opacity="0.85" />
+
+              {/* Layer 2 — main flame body */}
+              <path d="M 50 130 C 18 130, 10 88, 38 38 C 41 56, 48 58, 50 38 C 52 58, 59 56, 62 38 C 90 88, 82 130, 50 130 Z"
+                fill="url(#flameMainGrad)" filter="url(#flameGlow)" className="svg-flame-main" />
+
+              {/* Layer 3 — inner core */}
+              <path d="M 50 130 C 30 130, 26 96, 44 60 C 46 72, 50 74, 54 60 C 72 96, 68 130, 50 130 Z"
+                fill="url(#flameCoreGrad)" className="svg-flame-core" />
+
+              {/* Layer 4 — bright tip */}
+              <path d="M 50 130 C 38 130, 36 108, 46 80 C 48 88, 52 88, 54 80 C 62 108, 60 130, 50 130 Z"
+                fill="url(#flameTipGrad)" className="svg-flame-inner" />
+
+              {/* Ember sparks rising */}
+              {[0,1,2,3,4,5,6].map(i => (
+                <circle key={i} cx={18 + i * 10} cy={115 - i * 6} r={1.2 + (i % 3) * 0.6}
+                  fill={i % 2 === 0 ? "#ffee88" : "#ff9900"}
+                  style={{ animation: `sparkRise ${0.8 + i * 0.2}s infinite ease-out`, animationDelay: `${i * 0.18}s` }}
+                />
               ))}
-            </div>
+            </svg>
           </div>
 
-          {/* Full-screen floating sparks & smoke overlay */}
-          {hasFire && (
-            <div className="fire-embers-overlay">
-              {/* Dense Embers Sparks (75 particles) */}
-              {Array.from({ length: 75 }).map((_, i) => {
-                const size = Math.random() * 6 + 3; // 3px to 9px
-                const left = Math.random() * 100; // 0% to 100%
-                const delay = Math.random() * 6; // 0s to 6s
-                const duration = Math.random() * 3 + 3; // 3s to 6s
-                const sway = (Math.random() * 100 - 50) + "px"; // -50px to 50px
-                return (
-                  <div
-                    key={`ember-${i}`}
-                    className="ember-particle"
-                    style={{
-                      left: `${left}%`,
-                      width: `${size}px`,
-                      height: `${size}px`,
-                      animationDelay: `${delay}s`,
-                      animationDuration: `${duration}s`,
-                      ...({ "--sway": sway } as React.CSSProperties)
-                    }}
-                  />
-                );
-              })}
-
-              {/* Drifting Smoke Particles (25 particles) */}
-              {Array.from({ length: 25 }).map((_, i) => {
-                const size = Math.random() * 70 + 50; // 50px to 120px
-                const left = Math.random() * 100; // 0% to 100%
-                const delay = Math.random() * 8; // 0s to 8s
-                const duration = Math.random() * 4 + 7; // 7s to 11s
-                const drift = (Math.random() * 160 - 80) + "px"; // -80px to 80px
-                return (
-                  <div
-                    key={`smoke-${i}`}
-                    className="smoke-particle"
-                    style={{
-                      left: `${left}%`,
-                      width: `${size}px`,
-                      height: `${size}px`,
-                      animationDelay: `${delay}s`,
-                      animationDuration: `${duration}s`,
-                      ...({ "--drift": drift } as React.CSSProperties)
-                    }}
-                  />
-                );
-              })}
-            </div>
-          )}
 
           <div className="alarm-locations-list">
             <strong>火灾报警物理点位列表：</strong>

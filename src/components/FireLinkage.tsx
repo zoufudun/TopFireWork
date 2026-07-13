@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
 import { eventBus } from "../events/eventBus";
+import { useFireStore } from "../store/useFireStore";
 
 type ExtinguishMethod = "1301" | "mist";
 type LinkageMode = "auto" | "manual";
@@ -53,16 +54,31 @@ export function FireLinkage() {
 
   // 优化状态机：将声光报警与声警报改为由运行状态 status 派生的状态，消除多余状态与不同步问题
   const soundAlarmActive = status !== "safe" && status !== "aborted";
-  const sirenActive = status === "pump" || status === "spraying";
+  const sirenActive = status === "pump" || status === "spraying" || (method === "1301" && status === "counting" && countdown <= 2);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const beepIntervalRef = useRef<number | null>(null);
 
   // 硬件状态判定
   const selectorValveOpen = valveOpeningProgress >= 90;
-  const zoneValveOpen = status === "spraying" || status === "pump" || status === "valves";
+  const zoneValveOpen = status === "spraying" || status === "pump" || status === "valves" || (method === "1301" && status === "counting");
   const pumpActive = method === "mist" && (status === "pump" || status === "spraying");
   const sprayingActive = status === "spraying";
+
+  // 为操作员从全局提示层进入联动页面时，自动启动火警确认流程
+  const { pendingLinkageAutoStart, pendingLinkageMethod, setPendingLinkageAutoStart } = useFireStore();
+
+  useEffect(() => {
+    if (pendingLinkageAutoStart) {
+      // 设置火烅手段并直接进入「等待人工确认火警」状态
+      setMethod(pendingLinkageMethod);
+      setStatus("confirming");
+      // 清除标记，避免再次触发
+      setPendingLinkageAutoStart(false);
+    }
+    // 仅在组件初次挂载时执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 根据手段切换，初始化默认压力和倒计时
   useEffect(() => {
@@ -191,15 +207,33 @@ export function FireLinkage() {
     return () => clearInterval(timer);
   }, [status]);
 
+  // 1b. 1301气体灭火：启动倒计时同时启动分配阀
+  useEffect(() => {
+    let valveInterval: number;
+    if (status === "counting" && method === "1301") {
+      setValveOpeningProgress(0);
+      let prog = 0;
+      valveInterval = window.setInterval(() => {
+        prog += 5; // 每 150ms 增加 5%，约 3 秒全部打开
+        if (prog >= 100) {
+          setValveOpeningProgress(100);
+          clearInterval(valveInterval);
+        } else {
+          setValveOpeningProgress(prog);
+        }
+      }, 150);
+    }
+    return () => {
+      if (valveInterval) clearInterval(valveInterval);
+    };
+  }, [status, method]);
+
   // 2. 倒计时状态机跳转：依赖 countdown 的变化独立响应
   useEffect(() => {
     if (status === "counting") {
       if (countdown === 0) {
-        setStatus("valves");
-        setValveOpeningProgress(0);
-      } else {
-        // 按照细水雾阶段化设计：25秒倒计时撤离期间，阀门并不开启，待倒计时归零后才驱动分配阀
-        setValveOpeningProgress(0);
+        // 倒计时结束，分配阀门已在倒计时启动时同时开启完成（100%），直接进入开电磁启动阀阶段
+        setStatus("pump");
       }
     }
   }, [countdown, status]);
@@ -953,141 +987,316 @@ export function FireLinkage() {
           {/* Stepper Pipeline Flow */}
           <div className="stepper-container" style={{ padding: method === "1301" ? "20px 20px" : "24px 20px" }}>
             <h4 style={{ margin: "0 0 6px 0", fontSize: "12px", color: "var(--cyan)", fontWeight: "bold" }}>
-              {method === "1301" ? "1301 气体自动喷洒时序图 (现场监控状态机)" : "高压细水雾喷淋工艺流程控制图"}
+              {method === "1301" ? "1301 气体喷洒工艺流程控制图" : "高压细水雾喷淋工艺流程控制图"}
             </h4>
 
             {method === "1301" ? (
-              /* 1301 气体自动喷洒时序图 (SVG 动画图形) */
-              <div style={{ marginTop: "12px", position: "relative", width: "100%", overflowX: "auto" }}>
-                <svg width="100%" height="160" viewBox="0 0 540 160" style={{ overflow: "visible", minWidth: "500px" }}>
-                  <defs>
-                    <radialGradient id="lineCursorGlow" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="rgba(255, 77, 94, 0.4)" />
-                      <stop offset="100%" stopColor="rgba(255, 77, 94, 0)" />
-                    </radialGradient>
-                  </defs>
+              /* 1301 气体灭火工艺流程控制图 — 完整动态版 */
+              <div style={{ marginTop: "10px" }}>
 
-                  {/* 时序背景背板 */}
-                  <rect x="0" y="0" width="536" height="152" fill="rgba(10, 24, 44, 0.3)" rx="8" stroke="rgba(77, 231, 255, 0.1)" strokeWidth="1" />
+                {/* ── 顶部状态条：火焰 + 确认 + LED倒计时 ── */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "14px",
+                  background: "linear-gradient(135deg, rgba(80,10,10,0.9) 0%, rgba(20,5,8,0.95) 100%)",
+                  border: `1.5px solid ${status === "counting" || status === "spraying" ? "#ff4d5e" : "rgba(255,77,94,0.3)"}`,
+                  borderRadius: "10px", padding: "10px 16px", marginBottom: "10px",
+                  boxShadow: status === "counting" ? "0 0 20px rgba(255,77,94,0.4), inset 0 0 12px rgba(255,77,94,0.1)" : "none",
+                  transition: "all 0.4s"
+                }}>
 
-                  {/* 时序竖向虚线分割线 */}
-                  <line x1="120" y1="8" x2="120" y2="136" stroke="rgba(255,255,255,0.08)" strokeDasharray="3" />
-                  <line x1="170" y1="8" x2="170" y2="136" stroke="rgba(255,255,255,0.08)" strokeDasharray="3" />
-                  <line x1="320" y1="8" x2="320" y2="136" stroke="rgba(255,255,255,0.08)" strokeDasharray="3" />
-                  <line x1="390" y1="8" x2="390" y2="136" stroke="rgba(255,255,255,0.08)" strokeDasharray="3" />
-                  <line x1="450" y1="8" x2="450" y2="136" stroke="rgba(255,255,255,0.08)" strokeDasharray="3" />
+                  {/* 火焰动态图标 */}
+                  <div style={{ position: "relative", width: "36px", height: "46px", flexShrink: 0 }}>
+                    <svg viewBox="0 0 40 52" style={{ width: "100%", height: "100%", overflow: "visible" }}>
+                      <defs>
+                        <linearGradient id="fg1" x1="0" y1="1" x2="0" y2="0">
+                          <stop offset="0%" stopColor="#8B0000" />
+                          <stop offset="30%" stopColor="#cc2200" />
+                          <stop offset="65%" stopColor="#ff6600" />
+                          <stop offset="100%" stopColor="#ffaa00" stopOpacity="0" />
+                        </linearGradient>
+                        <linearGradient id="fg2" x1="0" y1="1" x2="0" y2="0">
+                          <stop offset="0%" stopColor="#cc3300" />
+                          <stop offset="55%" stopColor="#ff9900" />
+                          <stop offset="100%" stopColor="#ffee00" stopOpacity="0" />
+                        </linearGradient>
+                        <linearGradient id="fg3" x1="0" y1="1" x2="0" y2="0">
+                          <stop offset="0%" stopColor="#ff6600" />
+                          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+                        </linearGradient>
+                        <filter id="fgGlow"><feGaussianBlur stdDeviation="1.5" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+                      </defs>
+                      {/* outer halo */}
+                      <path d="M 20 50 C 2 50, -2 30, 12 8 C 14 20, 18 22, 20 8 C 22 22, 26 20, 28 8 C 42 30, 38 50, 20 50 Z"
+                        fill="url(#fg1)" filter="url(#fgGlow)" className="svg-flame-outer" opacity="0.9" />
+                      {/* main body */}
+                      <path d="M 20 50 C 6 50, 4 34, 15 14 C 17 24, 20 26, 23 14 C 34 34, 34 50, 20 50 Z"
+                        fill="url(#fg2)" filter="url(#fgGlow)" className="svg-flame-main" />
+                      {/* core */}
+                      <path d="M 20 50 C 12 50, 10 38, 17 22 C 18 30, 22 30, 23 22 C 28 38, 28 50, 20 50 Z"
+                        fill="url(#fg3)" className="svg-flame-core" />
+                      {/* sparks */}
+                      {[0,1,2,3].map(i => (
+                        <circle key={i} cx={8 + i * 8} cy={44 - i * 5} r={0.9 + (i % 2) * 0.5}
+                          fill={i % 2 === 0 ? "#ffee88" : "#ff9900"}
+                          style={{ animation: `sparkRise ${0.7 + i * 0.2}s infinite ease-out`, animationDelay: `${i * 0.2}s` }}
+                        />
+                      ))}
+                    </svg>
+                  </div>
 
-                  {/* 时间阶段横轴文本描述 */}
-                  <text x="60" y="146" fill="var(--muted)" fontSize="9.5" textAnchor="middle" fontWeight="bold">火警报警 (T=0)</text>
-                  <text x="145" y="146" fill="var(--muted)" fontSize="9.5" textAnchor="middle" fontWeight="bold">人工确认</text>
-                  <text x="245" y="146" fill="var(--muted)" fontSize="9.5" textAnchor="middle" fontWeight="bold">25s倒计时延时</text>
-                  <text x="355" y="146" fill="var(--muted)" fontSize="9.5" textAnchor="middle" fontWeight="bold">开分配阀</text>
-                  <text x="420" y="146" fill="var(--muted)" fontSize="9.5" textAnchor="middle" fontWeight="bold">开声光警报</text>
-                  <text x="483" y="146" fill="var(--muted)" fontSize="9.5" textAnchor="middle" fontWeight="bold">喷洒灭火</text>
+                  {/* 确认状态图标 */}
+                  <div style={{
+                    flexShrink: 0, width: "36px", height: "36px", borderRadius: "50%",
+                    background: (status === "confirming" || status === "counting" || status === "valves" || status === "pump" || status === "spraying")
+                      ? "rgba(255,77,94,0.25)" : "rgba(255,255,255,0.06)",
+                    border: `2px solid ${(status === "confirming" || status === "counting" || status === "valves" || status === "pump" || status === "spraying") ? "#ff4d5e" : "rgba(255,255,255,0.12)"}`,
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: "17px",
+                    transition: "all 0.4s",
+                    boxShadow: (status === "confirming") ? "0 0 12px rgba(255,77,94,0.6)" : "none",
+                    animation: status === "confirming" ? "textPulse 0.8s infinite alternate" : "none"
+                  }}>
+                    {status === "safe" ? "🔒"
+                      : (status === "alarmed") ? "🚨"
+                        : (status === "confirming") ? "⚠️"
+                          : (status === "counting" || status === "valves" || status === "pump") ? "⏳"
+                            : status === "spraying" ? "✅"
+                              : "🛑"}
+                  </div>
 
-                  {/* 行 1: 声警报 */}
-                  <text x="15" y="24" fill="#fff" fontSize="10" fontWeight="bold">1# 声警报音响</text>
-                  <rect x="120" y="15" width="396" height="10" rx="3" fill={soundAlarmActive ? "rgba(255, 77, 94, 0.25)" : "rgba(255,255,255,0.03)"} stroke={soundAlarmActive ? "var(--red)" : "rgba(255,255,255,0.05)"} strokeWidth="0.8" />
-                  {soundAlarmActive && (
-                    <rect x="120" y="15" width="396" height="10" rx="3" fill="var(--red)" opacity="0.6" style={{ animation: "flashBeacon 0.8s infinite alternate" }} />
-                  )}
+                  {/* LED 数字倒计时显示 */}
+                  <div style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: "10px", color: "rgba(255,200,200,0.6)", letterSpacing: "0.12em", marginBottom: "2px" }}>
+                      {status === "counting" ? "· COUNTDOWN ·" : status === "spraying" ? "· RELEASING ·" : "· STANDBY ·"}
+                    </div>
+                    <div style={{
+                      fontFamily: "'Courier New', 'Lucida Console', monospace",
+                      fontSize: status === "counting" ? "40px" : "32px",
+                      fontWeight: 900,
+                      letterSpacing: "0.06em",
+                      lineHeight: 1,
+                      color: status === "counting" ? (countdown <= 5 ? "#ff2233" : "#ff8800")
+                        : status === "spraying" ? "#ff4d5e"
+                          : "rgba(100,80,80,0.5)",
+                      textShadow: status === "counting"
+                        ? `0 0 8px ${countdown <= 5 ? "rgba(255,34,51,0.9)" : "rgba(255,136,0,0.8)"}, 0 0 20px ${countdown <= 5 ? "rgba(255,34,51,0.5)" : "rgba(255,136,0,0.4)"}, 0 0 40px ${countdown <= 5 ? "rgba(255,34,51,0.25)" : "rgba(255,136,0,0.2)"}`
+                        : status === "spraying" ? "0 0 10px rgba(255,77,94,0.7)" : "none",
+                      animation: (status === "counting" && countdown <= 5) ? "textPulse 0.5s infinite alternate" : "none",
+                      transition: "color 0.3s, text-shadow 0.3s"
+                    }}>
+                      {status === "counting" ? String(countdown).padStart(2, "0")
+                        : status === "spraying" ? "GO"
+                          : status === "safe" || status === "aborted" ? "--"
+                            : "··"}
+                    </div>
+                    {status === "counting" && (
+                      <div style={{ fontSize: "9px", color: "rgba(255,140,0,0.7)", letterSpacing: "0.1em", marginTop: "2px" }}>秒 / SEC</div>
+                    )}
+                  </div>
 
-                  {/* 行 2: 人工确认 */}
-                  <text x="15" y="48" fill="#fff" fontSize="10" fontWeight="bold">2# 人工确认键</text>
-                  <rect x="120" y="39" width="50" height="10" rx="3" fill={status === "confirming" ? "rgba(255, 186, 82, 0.25)" : status !== "safe" && status !== "alarmed" && status !== "aborted" ? "rgba(55, 242, 193, 0.25)" : "rgba(255,255,255,0.03)"} stroke={status === "confirming" ? "var(--amber)" : status !== "safe" && status !== "alarmed" && status !== "aborted" ? "var(--green)" : "rgba(255,255,255,0.05)"} strokeWidth="0.8" />
-                  {status === "confirming" && (
-                    <rect x="120" y="39" width="50" height="10" rx="3" fill="var(--amber)" opacity="0.6" style={{ animation: "flashBeacon 0.5s infinite alternate" }} />
-                  )}
+                  {/* 状态文字 */}
+                  <div style={{ flexShrink: 0, maxWidth: "130px", fontSize: "10.5px", color: "rgba(255,220,220,0.8)", lineHeight: 1.5, textAlign: "right" }}>
+                    {status === "safe" ? "系统就绪\n等待联锁驱动"
+                      : status === "alarmed" ? "🚨 火警已触发\n声警报启动"
+                        : status === "confirming" ? "⚠️ 等待人工\n确认火警"
+                          : status === "counting" ? `⏳ 人员疏散\n倒计时中`
+                            : status === "valves" ? `分配阀开启\n${valveOpeningProgress}%`
+                              : status === "pump" ? "电磁阀已开\n先导动作"
+                                : status === "spraying" ? "🔥 1301药剂\n正在喷洒"
+                                  : "🛑 系统中止"}
+                  </div>
+                </div>
 
-                  {/* 行 3: 气体分配阀 */}
-                  <text x="15" y="72" fill="#fff" fontSize="10" fontWeight="bold">3# 气体分配阀</text>
-                  <rect x="320" y="63" width="196" height="10" rx="3" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.05)" strokeWidth="0.8" />
-                  {(status === "valves" || status === "pump" || status === "spraying") && (
-                    <rect
-                      x="320"
-                      y="63"
-                      width={status === "valves" ? `${(valveOpeningProgress / 100) * 70}` : 196}
-                      height="10"
-                      rx="3"
-                      fill="var(--cyan)"
-                      stroke="var(--cyan)"
-                      strokeWidth="0.8"
-                      style={{ filter: "drop-shadow(0 0 3px var(--cyan))", transition: "width 0.15s linear" }}
-                    />
-                  )}
+                {/* ── 主 SVG 管道图 ── */}
+                <div style={{ position: "relative", width: "100%", overflowX: "auto" }}>
+                  <svg width="100%" height="160" viewBox="0 0 560 160" style={{ overflow: "visible", minWidth: "500px" }}>
 
-                  {/* 行 4: 声光报警器 */}
-                  <text x="15" y="96" fill="#fff" fontSize="10" fontWeight="bold">4# 声光报警器</text>
-                  <rect x="390" y="87" width="126" height="10" rx="3" fill={sirenActive ? "rgba(255, 77, 94, 0.25)" : "rgba(255,255,255,0.03)"} stroke={sirenActive ? "var(--red)" : "rgba(255,255,255,0.05)"} strokeWidth="0.8" />
-                  {sirenActive && (
-                    <rect x="390" y="87" width="126" height="10" rx="3" fill="var(--red)" opacity="0.6" style={{ animation: "flashBeacon 0.4s infinite alternate" }} />
-                  )}
+                    {/* ── 全局渐变/滤镜定义 ── */}
+                    <defs>
+                      <linearGradient id="cylGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#6b1010" />
+                        <stop offset="35%" stopColor="#c0392b" />
+                        <stop offset="65%" stopColor="#e74c3c" />
+                        <stop offset="100%" stopColor="#7b241c" />
+                      </linearGradient>
+                      <linearGradient id="cylCapGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#922b21" />
+                        <stop offset="100%" stopColor="#5b0000" />
+                      </linearGradient>
+                      <linearGradient id="brassG" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#f0c040" />
+                        <stop offset="50%" stopColor="#c89820" />
+                        <stop offset="100%" stopColor="#a07010" />
+                      </linearGradient>
+                      <linearGradient id="metalG" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#4e5d6c" />
+                        <stop offset="50%" stopColor="#8ba4bd" />
+                        <stop offset="100%" stopColor="#2d3741" />
+                      </linearGradient>
+                      <linearGradient id="pipeG" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#5a6a7a" />
+                        <stop offset="100%" stopColor="#2a3a4a" />
+                      </linearGradient>
+                      <filter id="glowF">
+                        <feGaussianBlur stdDeviation="2.5" result="blur" />
+                        <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                      </filter>
+                      <filter id="softGlow">
+                        <feGaussianBlur stdDeviation="1.5" result="b" />
+                        <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+                      </filter>
+                    </defs>
 
-                  {/* 行 5: 气瓶药剂释放 */}
-                  <text x="15" y="120" fill="#fff" fontSize="10" fontWeight="bold">5# 释放气体灭火</text>
-                  <rect x="450" y="111" width="66" height="10" rx="3" fill={status === "spraying" ? "rgba(255, 77, 94, 0.3)" : "rgba(255,255,255,0.03)"} stroke={status === "spraying" ? "var(--red)" : "rgba(255,255,255,0.05)"} strokeWidth="0.8" />
-                  {status === "spraying" && (
-                    <rect x="450" y="111" width="66" height="10" rx="3" fill="var(--red)" opacity="0.7" style={{ animation: "flashBeacon 0.3s infinite alternate" }} />
-                  )}
-
-                  {/* 扫描的红光时序游标线 */}
-                  {status !== "safe" && status !== "aborted" && (
-                    <g>
+                    {/* ━━ 1. 储气钢瓶 (Gas Cylinder) — x=20 ━━ */}
+                    <g transform="translate(20, 20)">
+                      {/* 瓶体 */}
+                      <rect x="8" y="14" width="28" height="56" fill="url(#cylGrad)" rx="5" stroke="#3d0a0a" strokeWidth="1" />
+                      {/* 瓶肩圆弧 */}
+                      <path d="M 8 20 C 8 8, 36 8, 36 20 Z" fill="url(#cylCapGrad)" />
+                      {/* 阀门头 */}
+                      <rect x="17" y="1" width="10" height="9" fill="url(#brassG)" rx="1" />
+                      <circle cx="22" cy="1" r="4" fill="url(#brassG)" />
+                      {/* 压力表盘 */}
+                      <circle cx="22" cy="26" r="7.5" fill="#fff" stroke="#333" strokeWidth="1" />
+                      <circle cx="22" cy="26" r="6.5" fill="#f0f0f0" />
+                      {/* 压力指针 — 释放后归零 */}
                       <line
-                        x1={
-                          status === "alarmed" ? 120
-                            : status === "confirming" ? 145
-                              : status === "counting" ? 170 + ((25 - countdown) / 25) * 150
-                                : status === "valves" ? 320 + (valveOpeningProgress / 100) * 70
-                                  : status === "pump" ? 420
-                                    : 483
-                        }
-                        y1="6"
-                        x2={
-                          status === "alarmed" ? 120
-                            : status === "confirming" ? 145
-                              : status === "counting" ? 170 + ((25 - countdown) / 25) * 150
-                                : status === "valves" ? 320 + (valveOpeningProgress / 100) * 70
-                                  : status === "pump" ? 420
-                                    : 483
-                        }
-                        y2="138"
-                        stroke="var(--red)"
-                        strokeWidth="1.8"
-                        style={{ transition: (status === "counting" || status === "valves") ? "all 0.15s linear" : "all 0.5s ease-out" }}
+                        x1="22" y1="26"
+                        x2={sprayingActive ? 22 : 22 + 5.5 * Math.cos(-Math.PI * 0.25)}
+                        y2={sprayingActive ? 32 : 26 - 5.5 * Math.sin(-Math.PI * 0.25)}
+                        stroke="#e74c3c" strokeWidth="1.2" strokeLinecap="round"
+                        style={{ transition: "all 1.5s ease-out" }}
                       />
-                      <circle
-                        cx={
-                          status === "alarmed" ? 120
-                            : status === "confirming" ? 145
-                              : status === "counting" ? 170 + ((25 - countdown) / 25) * 150
-                                : status === "valves" ? 320 + (valveOpeningProgress / 100) * 70
-                                  : status === "pump" ? 420
-                                    : 483
-                        }
-                        cy="6"
-                        r="3.5"
-                        fill="var(--red)"
-                        style={{ transition: (status === "counting" || status === "valves") ? "all 0.15s linear" : "all 0.5s ease-out" }}
-                      />
-                      <circle
-                        cx={
-                          status === "alarmed" ? 120
-                            : status === "confirming" ? 145
-                              : status === "counting" ? 170 + ((25 - countdown) / 25) * 150
-                                : status === "valves" ? 320 + (valveOpeningProgress / 100) * 70
-                                  : status === "pump" ? 420
-                                    : 483
-                        }
-                        cy="138"
-                        r="3.5"
-                        fill="var(--red)"
-                        style={{ transition: (status === "counting" || status === "valves") ? "all 0.15s linear" : "all 0.5s ease-out" }}
-                      />
+                      <circle cx="22" cy="26" r="1" fill="#333" />
+                      {/* 压力刻度弧 */}
+                      <path d="M 16 31 A 7 7 0 1 1 28 31" fill="none" stroke="#ccc" strokeWidth="0.5" />
+                      {/* 2.0MPa 文字 */}
+                      <text x="22" y="42" fill={sprayingActive ? "#aaa" : "#e74c3c"} fontSize="5" textAnchor="middle" fontWeight="bold">
+                        {sprayingActive ? "0 MPa" : "2.0 MPa"}
+                      </text>
+                      {/* 钢瓶标签 */}
+                      <text x="22" y="78" fill="#ff9999" fontSize="7.5" textAnchor="middle" fontWeight="bold">储气钢瓶</text>
+                      <text x="22" y="88" fill="rgba(255,255,255,0.4)" fontSize="6" textAnchor="middle">ZS-40 · 1301</text>
+
+                      {/* 气体喷射效果 (spraying) */}
+                      {sprayingActive && (
+                        <g style={{ animation: "flashBeacon 0.3s infinite alternate" }}>
+                          <path d="M 36 30 L 55 22 L 55 38 Z" fill="rgba(180,240,255,0.5)" style={{ filter: "blur(2px)" }} />
+                          <circle cx="50" cy="28" r="3" fill="rgba(200,255,255,0.6)" />
+                          <circle cx="52" cy="34" r="2" fill="rgba(200,255,255,0.5)" />
+                        </g>
+                      )}
                     </g>
-                  )}
-                </svg>
+
+                    {/* ━━ 管道 1: 钢瓶 → 启动阀 ━━ */}
+                    <rect x="62" y="46" width="88" height="8" fill="url(#pipeG)" rx="3" />
+                    {(status === "valves" || status === "pump" || status === "spraying") && (
+                      <rect x="62" y="48" width="88" height="4" fill="none"
+                        stroke="var(--cyan)" strokeWidth="3" strokeDasharray="8,5"
+                        style={{ animation: "flowMove 1.2s infinite linear" }} />
+                    )}
+
+                    {/* ━━ 2. 电磁启动阀 — x=155 ━━ */}
+                    <g transform="translate(155, 20)">
+                      {/* 小启动气瓶 */}
+                      <rect x="10" y="18" width="18" height="38" fill="#2c3e50" rx="3" stroke="#1a252f" strokeWidth="0.8" />
+                      <path d="M 10 24 C 10 14, 28 14, 28 24 Z" fill="#34495e" />
+                      {/* 电磁线圈头 */}
+                      <rect x="14" y="8" width="10" height="11" fill="url(#brassG)" rx="1" />
+                      <rect x="12" y="4" width="14" height="5" fill="url(#brassG)" rx="1" />
+                      {/* 激活指示灯 */}
+                      <circle cx="19" cy="30" r="4"
+                        fill={(status === "pump" || status === "spraying") ? "#00e676" : "#555"}
+                        style={{ filter: (status === "pump" || status === "spraying") ? "drop-shadow(0 0 5px #00e676)" : "none" }}
+                      />
+                      <text x="19" y="68" fill="rgba(255,255,255,0.5)" fontSize="7.5" textAnchor="middle" fontWeight="bold">电磁启动阀</text>
+                    </g>
+
+                    {/* ━━ 管道 2: 启动阀 → 分配阀 ━━ */}
+                    <rect x="193" y="46" width="106" height="8" fill="url(#pipeG)" rx="3" />
+                    {(status === "pump" || status === "spraying") && (
+                      <rect x="193" y="48" width="106" height="4" fill="none"
+                        stroke="var(--cyan)" strokeWidth="3" strokeDasharray="8,5"
+                        style={{ animation: "flowMove 1.2s infinite linear" }} />
+                    )}
+
+                    {/* ━━ 3. 分配阀组 — x=304 ━━ */}
+                    <g transform="translate(304, 20)">
+                      {/* 阀体三角 (left & right) */}
+                      <polygon points="0,16 18,28 0,40" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                      <polygon points="36,16 18,28 36,40" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                      {/* 阀芯 */}
+                      <circle cx="18" cy="28" r="11" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                      <circle cx="18" cy="28" r="8" fill="#1a202c" />
+                      {/* 电磁驱动头 */}
+                      <rect x="12" y="2" width="12" height="11" fill="url(#brassG)" rx="1.5" />
+                      {/* 阀门旋转手轮 — 带进度弧 */}
+                      <g transform={`translate(18, 28) rotate(${zoneValveOpen ? 90 : 0})`}
+                        style={{ transition: "transform 0.8s ease-in-out" }}>
+                        <line x1="0" y1="-8" x2="0" y2="8"
+                          stroke={zoneValveOpen ? "var(--green)" : "var(--red)"} strokeWidth="3" strokeLinecap="round" />
+                        <circle cx="0" cy="0" r="2" fill="#fff" />
+                      </g>
+                      {/* 阀门开度进度弧 (只在 valves 状态显示) */}
+                      {status === "valves" && valveOpeningProgress > 0 && (
+                        <circle cx="18" cy="28" r="13" fill="none"
+                          stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round"
+                          strokeDasharray={`${(valveOpeningProgress / 100) * 81.7} 81.7`}
+                          transform="rotate(-90 18 28)"
+                          style={{ filter: "drop-shadow(0 0 3px var(--green))", transition: "stroke-dasharray 0.2s" }}
+                        />
+                      )}
+                      {/* 开度% 文字 */}
+                      {status === "valves" && (
+                        <text x="18" y="52" fill="var(--green)" fontSize="7" textAnchor="middle" fontWeight="bold">
+                          {valveOpeningProgress}%
+                        </text>
+                      )}
+                      <text x="18" y="68" fill="rgba(255,255,255,0.5)" fontSize="7.5" textAnchor="middle" fontWeight="bold">分配阀组</text>
+                    </g>
+
+                    {/* ━━ 管道 3: 分配阀 → 喷嘴 ━━ */}
+                    <rect x="354" y="46" width="100" height="8" fill="url(#pipeG)" rx="3" />
+                    {sprayingActive && (
+                      <rect x="354" y="48" width="100" height="4" fill="none"
+                        stroke="var(--cyan)" strokeWidth="3" strokeDasharray="8,5"
+                        style={{ animation: "flowMove 1.2s infinite linear" }} />
+                    )}
+
+                    {/* ━━ 4. 气体喷嘴 — x=459 ━━ */}
+                    <g transform="translate(459, 20)">
+                      {/* 喇叭形喷嘴 */}
+                      <polygon points="8,10 32,10 26,28 14,28" fill="url(#metalG)" stroke="#555" strokeWidth="0.8" />
+                      <rect x="17" y="28" width="6" height="8" fill="url(#metalG)" />
+                      {/* 喷射气雾 */}
+                      {sprayingActive && (
+                        <g style={{ animation: "flashBeacon 0.25s infinite alternate" }}>
+                          <path d="M 20 34 L -8 62 L 48 62 Z" fill="rgba(180,240,255,0.45)" style={{ filter: "blur(3px)" }} />
+                          <ellipse cx="12" cy="52" rx="5" ry="4" fill="rgba(200,255,255,0.5)" />
+                          <ellipse cx="28" cy="55" rx="6" ry="4.5" fill="rgba(200,255,255,0.45)" />
+                          <ellipse cx="20" cy="48" rx="4" ry="3" fill="rgba(255,255,255,0.6)" />
+                        </g>
+                      )}
+                      <text x="20" y="70" fill="rgba(255,255,255,0.5)" fontSize="7.5" textAnchor="middle" fontWeight="bold">气体喷头</text>
+                    </g>
+
+                    {/* ━━ 时序状态说明横幅 ━━ */}
+                    <rect x="20" y="112" width="518" height="24" fill="rgba(0,0,0,0.5)" rx="6" stroke="rgba(255,77,94,0.12)" />
+                    <text x="279" y="128"
+                      fill={sprayingActive ? "#ff4d5e" : status === "counting" ? "#ff9900" : status !== "safe" && status !== "aborted" ? "var(--cyan)" : "var(--muted)"}
+                      fontSize="9" textAnchor="middle" fontWeight="bold">
+                      {status === "safe" ? "🟢 1301 气体灭火系统就绪 — 等待火警联锁驱动..."
+                        : status === "alarmed" ? "🚨 火警报警触发：声警报已拉响，等待操作员点击确认..."
+                          : status === "confirming" ? "⚠️ 火警确认挂起：请操作员确认警报以开始 25 秒人员疏散倒计时..."
+                            : status === "counting" ? `⏳ 人员疏散撤离倒计时：${countdown}秒 — 防消总线联锁挂起，倒计时结束后自动开阀`
+                              : status === "valves" ? `⏳ 联动 Step-1：分配阀门通电旋转开启中... [开度: ${valveOpeningProgress}%]`
+                                : status === "pump" ? "⏳ 联动 Step-2：分配阀开启完毕，电磁启动阀得电先导动作..."
+                                  : status === "spraying" ? "🔥 药剂释放中：高压 1301 氟代烷灭火药剂正在全力喷洒气化！"
+                                    : "🛑 联动系统中止：气相管网及分配阀门紧急锁死闭锁。"}
+                    </text>
+                  </svg>
+                </div>
               </div>
+
             ) : (
               /* 细水雾流程状态机 (高压细水雾喷淋工艺流程控制图) */
               <div style={{ marginTop: "12px", position: "relative", width: "100%", overflowX: "auto" }}>

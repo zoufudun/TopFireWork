@@ -44,7 +44,12 @@ export default function App() {
     setPage,
     alarms,
     simulationRunning,
-    setSimulationRunning
+    setSimulationRunning,
+    showGlobalInterlockPrompt,
+    globalInterlockSource,
+    globalInterlockMethod,
+    setShowGlobalInterlockPrompt,
+    setPendingLinkageAutoStart
   } = useFireStore();
 
   const [time, setTime] = useState(new Date());
@@ -191,6 +196,125 @@ export default function App() {
 
         <div className="page-content">{renderPage()}</div>
       </main>
+
+      {/* 炫酷的“火警联锁驱动中”全局提示层 (模拟培训与联锁控制) */}
+      {showGlobalInterlockPrompt && page !== "linkage" && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100vw",
+          height: "100vh",
+          background: "rgba(3, 8, 16, 0.65)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 999999
+        }}>
+          <div style={{
+            width: "420px",
+            background: "linear-gradient(135deg, rgba(88, 10, 20, 0.98) 0%, rgba(16, 5, 8, 0.99) 100%)",
+            border: "2.5px solid #ff4d5e",
+            borderRadius: "16px",
+            padding: "24px",
+            boxShadow: "0 20px 50px rgba(255, 77, 94, 0.4), 0 0 30px rgba(255, 77, 94, 0.2)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "18px",
+            textAlign: "center"
+          }}>
+            {/* Shield Alert blinking */}
+            <div style={{
+              width: "56px",
+              height: "56px",
+              borderRadius: "50%",
+              background: "rgba(255, 77, 94, 0.15)",
+              margin: "0 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}>
+              <ShieldAlert size={30} color="#ff4d5e" style={{ animation: "flash 0.6s infinite alternate" }} />
+            </div>
+
+            <div>
+              <h2 style={{ margin: "0 0 6px 0", fontSize: "17.5px", color: "#fff", fontWeight: "900", letterSpacing: "0.08em" }}>
+                🚨 现场模拟火警联锁驱动中
+              </h2>
+              <span style={{ fontSize: "10px", color: "var(--cyan)", fontWeight: "bold", letterSpacing: "0.15em" }}>
+                TRAINING INTERLOCK SYSTEM DRIVING
+              </span>
+            </div>
+
+            <div style={{
+              fontSize: "12px",
+              color: "#ffd5d9",
+              lineHeight: "1.6",
+              background: "rgba(0, 0, 0, 0.35)",
+              padding: "12px 14px",
+              borderRadius: "10px",
+              textAlign: "left",
+              border: "1px solid rgba(255, 255, 255, 0.05)"
+            }}>
+              控制总线已联动触发，请操作人员前往灭火联动控制中心，确认真实性并执行自动/手动灭火流程：
+              <div style={{ margin: "8px 0 2px 0", fontSize: "10.5px", color: "rgba(255, 255, 255, 0.6)" }}>
+                警告触发源设备：
+              </div>
+              <strong style={{ color: "#fff", fontSize: "12.5px", display: "block", wordBreak: "break-all" }}>
+                {globalInterlockSource || "未知回路探测器"}
+              </strong>
+              <div style={{ margin: "6px 0 2px 0", fontSize: "10.5px", color: "rgba(255, 255, 255, 0.6)" }}>
+                联动防消灭火介质：
+              </div>
+              <strong style={{ color: "var(--cyan)", fontSize: "12.5px", display: "block" }}>
+                {globalInterlockMethod === "1301" ? "🔥 1301 气体自动喷洒保护区" : "💧 高压细水雾自动灭火保护区"}
+              </strong>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                onClick={() => {
+                  setShowGlobalInterlockPrompt(false);
+                  setPendingLinkageAutoStart(true);
+                  setPage("linkage");
+                }}
+                style={{
+                  flex: 1.3,
+                  background: "linear-gradient(135deg, var(--red), #e74c3c)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "10px 16px",
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 15px rgba(255, 77, 94, 0.4)",
+                  transition: "all 0.2s"
+                }}
+              >
+                立即进入联动控制中心执行
+              </button>
+              <button
+                onClick={() => setShowGlobalInterlockPrompt(false)}
+                style={{
+                  flex: 0.7,
+                  background: "rgba(255, 255, 255, 0.08)",
+                  color: "var(--muted)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: "8px",
+                  padding: "10px 16px",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  transition: "all 0.2s"
+                }}
+              >
+                忽略提示
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

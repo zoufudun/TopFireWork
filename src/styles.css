@@ -657,16 +657,21 @@ button {
 
 .alarm-row {
   display: grid;
-  grid-template-columns: 45px minmax(0, 1fr) 85px 72px;
+  grid-template-columns: 70px minmax(0, 1fr) 85px 72px;
   gap: 11px;
   align-items: center;
   width: 100%;
-  padding: 13px;
+  padding: 12px 16px 14px 16px;
   border: 1px solid transparent;
-  border-radius: 13px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.035);
   cursor: pointer;
   text-align: left;
+}
+
+/* Fire alarm rows — use center alignment same as other rows */
+.alarm-row.level-1 {
+  align-items: center;
 }
 
 .alarm-row:hover,
@@ -702,9 +707,10 @@ button {
 }
 
 .alarm-main strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.4;
 }
 
 .alarm-main small,
@@ -2605,138 +2611,39 @@ button {
   z-index: 1;
 }
 
-.flame-wrapper {
-  position: relative;
-  width: 100px;
-  height: 100px;
-  margin: 0 auto;
+/* Real SVG Vertical Flame Animations — upright, flickering, natural */
+.svg-flame-outer {
+  animation: svgFlameOuter 1.4s infinite alternate ease-in-out;
+  transform-origin: 50px 130px;
+}
+.svg-flame-main {
+  animation: svgFlameMain 1.0s infinite alternate ease-in-out;
+  transform-origin: 50px 130px;
+}
+.svg-flame-core {
+  animation: svgFlameCore 0.85s infinite alternate ease-in-out;
+  transform-origin: 50px 130px;
+}
+.svg-flame-inner {
+  animation: svgFlameInner 0.65s infinite alternate ease-in-out;
+  transform-origin: 50px 130px;
 }
 
-.flame-core {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  width: 32px;
-  height: 32px;
-  background: #ffffff;
-  border-radius: 0% 100% 50% 50%;
-  transform: translateX(-50%) rotate(-45deg);
-  box-shadow: 0 0 14px 6px #ffffff, 0 0 24px 10px #ffcc00;
-  animation: flameFlickerCore 0.15s infinite alternate;
-  transform-origin: center bottom;
+@keyframes svgFlameOuter {
+  0% { transform: scaleX(0.96) scaleY(0.95); }
+  100% { transform: scaleX(1.04) scaleY(1.05); }
 }
-
-.flame-main {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  width: 48px;
-  height: 48px;
-  background: #ff7a00;
-  border-radius: 0% 100% 50% 50%;
-  transform: translateX(-50%) rotate(-45deg);
-  box-shadow: 0 0 16px 6px #ff7a00, 0 0 32px 14px #ff3b30;
-  animation: flameFlickerMain 0.1s infinite alternate;
-  transform-origin: center bottom;
-  opacity: 0.9;
+@keyframes svgFlameMain {
+  0% { transform: scaleX(0.97) scaleY(0.96); }
+  100% { transform: scaleX(1.03) scaleY(1.04); }
 }
-
-.flame-outer {
-  position: absolute;
-  bottom: -3px;
-  left: 50%;
-  width: 64px;
-  height: 64px;
-  background: #ff3b30;
-  border-radius: 0% 100% 50% 50%;
-  transform: translateX(-50%) rotate(-45deg);
-  box-shadow: 0 0 24px 10px #ff3b30, 0 0 45px 20px #990000;
-  animation: flameFlickerOuter 0.12s infinite alternate;
-  transform-origin: center bottom;
-  opacity: 0.65;
+@keyframes svgFlameCore {
+  0% { transform: scaleX(0.98) scaleY(0.98); }
+  100% { transform: scaleX(1.02) scaleY(1.02); }
 }
-
-@keyframes flameFlickerCore {
-  0% { transform: translateX(-50%) rotate(-46deg) scale(0.9); }
-  100% { transform: translateX(-50%) rotate(-44deg) scale(1.1); }
-}
-
-@keyframes flameFlickerMain {
-  0% { transform: translateX(-50%) rotate(-43deg) scale(0.93); }
-  100% { transform: translateX(-50%) rotate(-47deg) scale(1.07); }
-}
-
-@keyframes flameFlickerOuter {
-  0% { transform: translateX(-50%) rotate(-45deg) scale(0.95); }
-  100% { transform: translateX(-50%) rotate(-45deg) scale(1.05); }
-}
-
-/* Full-screen Fire Sparks/Embers Particle Overlay */
-.fire-embers-overlay {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  top: 0;
-  pointer-events: none;
-  z-index: 9999;
-  overflow: hidden;
-}
-
-.ember-particle {
-  position: absolute;
-  bottom: -15px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,230,120,1) 0%, rgba(255,80,20,0.85) 50%, rgba(255,0,0,0) 100%);
-  animation: floatUpEmber 6s infinite linear;
-  opacity: 0;
-  box-shadow: 0 0 6px 2px rgba(255, 90, 0, 0.6);
-}
-
-@keyframes floatUpEmber {
-  0% {
-    transform: translateY(0) translateX(0) scale(1);
-    opacity: 0;
-  }
-  10% {
-    opacity: 0.8;
-  }
-  90% {
-    opacity: 0.8;
-  }
-  100% {
-    transform: translateY(-105vh) translateX(var(--sway)) scale(0.2);
-    opacity: 0;
-  }
-}
-
-/* Gray Smoke Particles Overlay */
-.smoke-particle {
-  position: absolute;
-  bottom: -50px;
-  background: radial-gradient(circle, rgba(90, 90, 90, 0.25) 0%, rgba(40, 40, 40, 0.08) 55%, rgba(0, 0, 0, 0) 100%);
-  border-radius: 50%;
-  filter: blur(12px);
-  animation: floatUpSmoke 10s infinite ease-out;
-  pointer-events: none;
-  opacity: 0;
-}
-
-@keyframes floatUpSmoke {
-  0% {
-    transform: translateY(0) scale(1) translateX(0);
-    opacity: 0;
-  }
-  15% {
-    opacity: 0.4;
-  }
-  80% {
-    opacity: 0.15;
-  }
-  100% {
-    transform: translateY(-110vh) scale(3.5) translateX(var(--drift));
-    opacity: 0;
-  }
+@keyframes svgFlameInner {
+  0% { transform: scaleX(0.97) scaleY(0.95); }
+  100% { transform: scaleX(1.03) scaleY(1.05); }
 }
 
 /* Fire alert location listings */
@@ -3106,20 +3013,20 @@ button {
 .stat-status-dot.fault { background: var(--amber); }
 .stat-status-dot.status { background: var(--cyan); }
 
-/* Sparks/Embers rise animation */
+/* Sparks/Embers rise animation — enhanced for alarm rows */
 @keyframes sparkRise {
   0% {
-    transform: translateY(0) scale(1) rotate(0deg);
+    transform: translateY(0) scale(1.2) rotate(0deg);
     opacity: 0;
   }
-  15% {
-    opacity: 0.95;
+  12% {
+    opacity: 1;
   }
-  85% {
-    opacity: 0.95;
+  60% {
+    opacity: 0.9;
   }
   100% {
-    transform: translateY(-38px) translateX(var(--drift, 12px)) scale(0.25) rotate(180deg);
+    transform: translateY(-70px) translateX(var(--drift, 12px)) scale(0.1) rotate(240deg);
     opacity: 0;
   }
 }

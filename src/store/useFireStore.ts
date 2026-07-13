@@ -21,6 +21,18 @@ interface FireState {
   alarms: Alarm[];
   simulationRunning: boolean;
 
+  // Global interlock warning overlay prompt state (for simulation and training)
+  showGlobalInterlockPrompt: boolean;
+  globalInterlockSource: string;
+  globalInterlockMethod: "1301" | "mist";
+  setShowGlobalInterlockPrompt: (show: boolean) => void;
+  setGlobalInterlockPrompt: (source: string, method: "1301" | "mist") => void;
+
+  // When the operator clicks "立即进入联动控制中心", FireLinkage reads this to auto-start confirming phase
+  pendingLinkageAutoStart: boolean;
+  pendingLinkageMethod: "1301" | "mist";
+  setPendingLinkageAutoStart: (v: boolean) => void;
+
   // Topology State
   controllers: ControllerNode[];
   selectedControllerId?: string;
@@ -72,6 +84,19 @@ export const useFireStore = create<FireState>((set) => ({
   devices: initialDevices,
   alarms: initialAlarms,
   simulationRunning: true,
+
+  // Global interlock prompt state initialization
+  showGlobalInterlockPrompt: false,
+  globalInterlockSource: "",
+  globalInterlockMethod: "1301",
+  setShowGlobalInterlockPrompt: (showGlobalInterlockPrompt) => set({ showGlobalInterlockPrompt }),
+  setGlobalInterlockPrompt: (globalInterlockSource, globalInterlockMethod) =>
+    set({ showGlobalInterlockPrompt: true, globalInterlockSource, globalInterlockMethod, pendingLinkageMethod: globalInterlockMethod }),
+
+  // Pending auto-start flags for FireLinkage component
+  pendingLinkageAutoStart: false,
+  pendingLinkageMethod: "1301",
+  setPendingLinkageAutoStart: (v) => set({ pendingLinkageAutoStart: v }),
 
   // Topology state init
   controllers: initialControllers,
@@ -145,9 +170,23 @@ export const useFireStore = create<FireState>((set) => ({
         return state;
       }
 
+      const isFire = alarm.level === 1 ||
+                     alarm.title.includes("火警") ||
+                     alarm.title.includes("火灾") ||
+                     alarm.description.includes("火警") ||
+                     alarm.description.includes("火灾");
+
+      const showPrompt = isFire && alarm.needLinkage !== false;
+      const method = alarm.linkageType || (alarm.floorId === "B1" ? "1301" : "mist");
+
       return {
         alarms: [alarm, ...state.alarms],
-        selectedAlarmId: alarm.id
+        selectedAlarmId: alarm.id,
+        ...(showPrompt ? {
+          showGlobalInterlockPrompt: true,
+          globalInterlockSource: `${alarm.source} (ADDR: ${alarm.deviceId})`,
+          globalInterlockMethod: method
+        } : {})
       };
     }),
 
