@@ -39,6 +39,9 @@ export function FireLinkage() {
   const [inPressure, setInPressure] = useState(2.4);             // MPa
   const [outPressure, setOutPressure] = useState(0.0);            // MPa
 
+  // 1301 模式下的火警目标防护区，默认为 A
+  const [targetZone, setTargetZone] = useState<"A" | "B" | "C">("A");
+
   // 子页面选项卡控制与储存站气压状态
   const [activeSubTab, setActiveSubTab] = useState<"control" | "stations" | "zones">("control");
   const [selectedStation, setSelectedStation] = useState<"A" | "B" | "C">("A");
@@ -69,6 +72,64 @@ export function FireLinkage() {
   const pumpActive = method === "mist" && (status === "pump" || status === "spraying");
   const sprayingActive = status === "spraying";
 
+  // 1301 交叉支援判定逻辑
+  const isADepleted = pressuresA.every(p => p < 0.1);
+  const isBDepleted = pressuresB.every(p => p < 0.1);
+  const isCDepleted = pressuresC.every(p => p < 0.1);
+
+  let activeSupplier: "A" | "B" | "C" | null = null;
+  let activeValve1 = false;
+  let activeValve2 = false;
+
+  if (method === "1301" && (status === "spraying" || status === "pump" || status === "valves" || status === "counting")) {
+    if (targetZone === "A") {
+      if (!isADepleted) {
+        activeSupplier = "A";
+      } else if (!isBDepleted) {
+        activeSupplier = "B";
+        activeValve1 = true;
+      } else if (!isCDepleted) {
+        activeSupplier = "C";
+        activeValve1 = true;
+        activeValve2 = true;
+      }
+    } else if (targetZone === "B") {
+      if (!isBDepleted) {
+        activeSupplier = "B";
+      } else if (!isADepleted) {
+        activeSupplier = "A";
+        activeValve1 = true;
+      } else if (!isCDepleted) {
+        activeSupplier = "C";
+        activeValve2 = true;
+      }
+    } else if (targetZone === "C") {
+      if (!isCDepleted) {
+        activeSupplier = "C";
+      } else if (!isBDepleted) {
+        activeSupplier = "B";
+        activeValve2 = true;
+      } else if (!isADepleted) {
+        activeSupplier = "A";
+        activeValve1 = true;
+        activeValve2 = true;
+      }
+    }
+  } else if (method === "mist" && (status === "spraying" || status === "pump" || status === "valves" || status === "counting")) {
+    activeSupplier = "B";
+  }
+
+  const finalValve1Open = valveABOpen || activeValve1;
+  const finalValve2Open = valveBCOpen || activeValve2;
+
+  // 同步主气瓶压力
+  useEffect(() => {
+    if (method === "1301" && activeSupplier) {
+      const activePressures = activeSupplier === "A" ? pressuresA : activeSupplier === "B" ? pressuresB : pressuresC;
+      setCylinderPressure(activePressures[0]);
+    }
+  }, [pressuresA, pressuresB, pressuresC, activeSupplier, method]);
+
   // 为操作员从全局提示层进入联动页面时，自动启动火警确认流程
   const { pendingLinkageAutoStart, pendingLinkageMethod, setPendingLinkageAutoStart } = useFireStore();
 
@@ -90,9 +151,15 @@ export function FireLinkage() {
       if (method === "1301") {
         setCountdown(25);
         setCylinderPressure(2.0); // 1301气体满瓶为 2.0 MPa
+        setPressuresA([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
+        setPressuresB([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
+        setPressuresC([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
       } else {
         setCountdown(5);
         setCylinderPressure(4.2); // 细水雾初始氮气稳压为 4.2 MPa
+        setPressuresA([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
+        setPressuresB([15.0, 4.2, 4.2, 4.2, 4.2, 4.2, 4.2]);
+        setPressuresC([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
       }
     }
   }, [method, status]);
@@ -124,6 +191,19 @@ export function FireLinkage() {
 
         setMethod(targetMethod);
 
+        // 自动判定并分配 1301 防护区
+        let assignedZone: "A" | "B" | "C" = "A";
+        if (targetMethod === "1301") {
+          if (alarm.source.includes("发电机房") || alarm.source.includes("发电")) {
+            assignedZone = "C";
+          } else if (alarm.source.includes("会议") || alarm.source.includes("会议厅")) {
+            assignedZone = "B";
+          } else {
+            assignedZone = "A";
+          }
+          setTargetZone(assignedZone);
+        }
+
         // 自动将系统切换到火警触发状态
         setStatus("alarmed");
 
@@ -133,7 +213,7 @@ export function FireLinkage() {
         }
 
         // 弹窗提示操作员发生了火警联动，引导其处理或查看
-        setTriggeredAlarmSource(`${alarm.source} (${alarm.title}, 保护区: ${targetMethod === "1301" ? "1301气体灭火区" : "高压细水雾区"})`);
+        setTriggeredAlarmSource(`${alarm.source} (${alarm.title}, 保护区: ${targetMethod === "1301" ? `1301气体防护区 ${assignedZone}` : "高压细水雾区"})`);
         setShowInterlockPrompt(true);
       }
     };
@@ -305,20 +385,18 @@ export function FireLinkage() {
   // 发生火警触发
   function triggerFireSim() {
     setStatus("alarmed");
+    setTriggeredAlarmSource(`手动模拟触发 (介质: ${method === "1301" ? `1301气体防护区 ${targetZone}` : "高压细水雾区"})`);
+    setShowInterlockPrompt(true);
 
     if (method === "1301") {
       if (mode === "auto") {
         // 1301气体自动模式：需要人工确认火警
         setStatus("confirming");
-      } else {
-        // 手动模式：处于火警触发状态，声报警开启，等待操作员点击“手动紧急启动”
       }
     } else {
       // 细水雾模式：自动模式下火警触发也进入“人工确认火警”状态
       if (mode === "auto") {
         setStatus("confirming");
-      } else {
-        // 手动模式：等待操作员手动启动
       }
     }
   }
@@ -360,9 +438,15 @@ export function FireLinkage() {
     let interval: number;
     if (status === "spraying") {
       if (method === "1301") {
-        // 1301气体释放：衰减灭火站A的7个钢瓶压力 (1# ZS40 和 2-7# ZS85)
+        // 1301气体释放：衰减当前活动的储气站的7个钢瓶压力
         interval = window.setInterval(() => {
-          setPressuresA((prev) => prev.map((p) => Math.max(0, parseFloat((p - 0.25).toFixed(2)))));
+          if (activeSupplier === "A") {
+            setPressuresA((prev) => prev.map((p) => Math.max(0, parseFloat((p - 0.25).toFixed(2)))));
+          } else if (activeSupplier === "B") {
+            setPressuresB((prev) => prev.map((p) => Math.max(0, parseFloat((p - 0.25).toFixed(2)))));
+          } else if (activeSupplier === "C") {
+            setPressuresC((prev) => prev.map((p) => Math.max(0, parseFloat((p - 0.25).toFixed(2)))));
+          }
         }, 150);
       } else {
         // 细水雾释放：衰减灭火站B的驱动钢瓶压力 (1# ZS40 启动气瓶从 15MPa 降到 0，2-7# 从 4.2MPa 降到 2.0MPa 稳压)
@@ -375,24 +459,27 @@ export function FireLinkage() {
       }
     }
     return () => clearInterval(interval);
-  }, [status, method]);
+  }, [status, method, activeSupplier]);
 
   // 联动安全复位
   function resetSystem() {
     setStatus("safe");
     setValveOpeningProgress(0);
     setOutPressure(0.0);
-    setPressuresA([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
-    setPressuresB([15.0, 4.2, 4.2, 4.2, 4.2, 4.2, 4.2]);
-    setPressuresC([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
     setValveABOpen(false);
     setValveBCOpen(false);
     if (method === "1301") {
       setCountdown(25);
       setCylinderPressure(2.0);
+      setPressuresA([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
+      setPressuresB([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
+      setPressuresC([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
     } else {
       setCountdown(0); // 细水雾没有倒计时
       setCylinderPressure(4.2);
+      setPressuresA([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
+      setPressuresB([15.0, 4.2, 4.2, 4.2, 4.2, 4.2, 4.2]);
+      setPressuresC([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
     }
   }
 
@@ -589,6 +676,11 @@ export function FireLinkage() {
         @keyframes flowMove {
           from { stroke-dashoffset: 20; }
           to { stroke-dashoffset: 0; }
+        }
+
+        @keyframes flowMoveReverse {
+          from { stroke-dashoffset: 0; }
+          to { stroke-dashoffset: 20; }
         }
       ` }} />
 
@@ -1114,7 +1206,7 @@ export function FireLinkage() {
 
                     {/* ── 主 SVG 管道图 ── */}
                     <div style={{ position: "relative", width: "100%", overflowX: "auto" }}>
-                      <svg width="100%" height="160" viewBox="0 0 560 160" style={{ overflow: "visible", minWidth: "500px" }}>
+                      <svg width="100%" height="240" viewBox="0 0 580 240" style={{ overflow: "visible", minWidth: "500px" }}>
 
                         {/* ── 全局渐变/滤镜定义 ── */}
                         <defs>
@@ -1142,196 +1234,386 @@ export function FireLinkage() {
                             <stop offset="0%" stopColor="#5a6a7a" />
                             <stop offset="100%" stopColor="#2a3a4a" />
                           </linearGradient>
-                          <filter id="glowF">
-                            <feGaussianBlur stdDeviation="2.5" result="blur" />
-                            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                          </filter>
-                          <filter id="softGlow">
-                            <feGaussianBlur stdDeviation="1.5" result="b" />
-                            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-                          </filter>
                         </defs>
 
-                        {/* ━━ 1. 储气钢瓶 (Gas Cylinder) — x=220 ━━ */}
-                        <g transform="translate(220, 25)">
-                          {/* 瓶体 */}
-                          <rect x="8" y="14" width="28" height="56" fill="url(#cylGrad)" rx="5" stroke="#3d0a0a" strokeWidth="1" />
-                          {/* 瓶肩圆弧 */}
-                          <path d="M 8 20 C 8 8, 36 8, 36 20 Z" fill="url(#cylCapGrad)" />
-                          {/* 一体化电磁瓶头阀头 */}
-                          <rect x="17" y="2" width="10" height="8" fill="url(#brassG)" rx="0.5" />
-                          <circle cx="22" cy="1" r="3.5" fill="url(#brassG)" />
-                          {/* 电磁线圈头 */}
-                          <rect x="19" y="-4" width="6" height="6" fill="#333" rx="0.5" />
-                          {/* 状态指示灯 */}
-                          <circle cx="22" cy="-1" r="1.5"
-                            fill={(status === "pump" || status === "spraying") ? "#00e676" : "#555"}
-                            style={{ filter: (status === "pump" || status === "spraying") ? "drop-shadow(0 0 4px #00e676)" : "none" }}
-                          />
-                          {/* 压力表盘 */}
-                          <circle cx="22" cy="26" r="7.5" fill="#fff" stroke="#333" strokeWidth="1" />
-                          <circle cx="22" cy="26" r="6.5" fill="#f0f0f0" />
-                          {/* 压力指针 — 释放后归零 */}
-                          <line
-                            x1="22" y1="26"
-                            x2={pressuresA.every(p => p < 0.1) ? 22 : 22 + 5.5 * Math.cos(-Math.PI * 0.25)}
-                            y2={pressuresA.every(p => p < 0.1) ? 32 : 26 - 5.5 * Math.sin(-Math.PI * 0.25)}
-                            stroke="#e74c3c" strokeWidth="1.2" strokeLinecap="round"
-                            style={{ transition: "all 1.5s ease-out" }}
-                          />
-                          <circle cx="22" cy="26" r="1" fill="#333" />
-                          <text x="22" y="42" fill={pressuresA.every(p => p < 0.1) ? "#aaa" : "#e74c3c"} fontSize="5" textAnchor="middle" fontWeight="bold">
-                            {pressuresA.every(p => p < 0.1) ? "0 MPa" : "2.0 MPa"}
-                          </text>
-                          {/* 钢瓶标签 */}
-                          <text x="22" y="78" fill="#ff9999" fontSize="7.5" textAnchor="middle" fontWeight="bold">电磁瓶头阀钢瓶</text>
-                          <text x="22" y="88" fill="rgba(255,255,255,0.4)" fontSize="6" textAnchor="middle">1301瓶头阀一体化</text>
+                        {/* ━━ 顶部时序状态说明横幅 ━━ */}
+                        <rect x="10" y="2" width="560" height="24" fill="rgba(0,0,0,0.5)" rx="6" stroke="rgba(255,77,94,0.12)" />
+                        <text x="290" y="17"
+                          fill={sprayingActive ? "#ff4d5e" : status === "counting" ? "#ff9900" : status !== "safe" && status !== "aborted" ? "var(--cyan)" : "var(--muted)"}
+                          fontSize="9" textAnchor="middle" fontWeight="bold">
+                          {status === "safe" ? `🟢 1301 气体灭火系统就绪 — 目标区: 保护区 ${targetZone} | 气源状态: A站(${pressuresA[0] > 0 ? "充盈" : "已空"}) B站(${pressuresB[0] > 0 ? "充盈" : "已空"}) C站(${pressuresC[0] > 0 ? "充盈" : "已空"})`
+                            : status === "alarmed" ? `🚨 火警报警触发：声警报已拉响，等待操作员确认保护区 ${targetZone}...`
+                              : status === "confirming" ? `⚠️ 火警确认挂起：请操作员确认以开始 25 秒释放倒计时...`
+                                : status === "counting" ? `⏳ 25秒人员疏散倒计时：${countdown}秒 — 保护区 ${targetZone} 分配阀通电开启中 [当前开度: ${valveOpeningProgress}%]`
+                                  : status === "pump" ? `⏳ 联动 Step-2：倒计时归零，灭火站 ${activeSupplier} 瓶头阀通电打开中...`
+                                    : status === "spraying" ? (activeSupplier !== targetZone ? `🔥 跨区支援释放中：保护区 ${targetZone} 对应灭火站耗尽，开启隔离阀，由灭火站 ${activeSupplier} 支援释放！` : `🔥 药剂释放中：1301 气体正在从灭火站 ${activeSupplier} 喷洒至 1301 保护区 ${targetZone}！`)
+                                      : "🛑 联动系统中止：气相管网及分配阀门紧急锁死闭锁。"}
+                        </text>
 
-                          {/* 气体释放时的内部微弱流体气化闪烁 */}
-                          {sprayingActive && !pressuresA.every(p => p < 0.1) && (
-                            <g style={{ animation: "flashBeacon 0.3s infinite alternate" }}>
-                              <path d="M 36 30 L 55 22 L 55 38 Z" fill="rgba(180,240,255,0.5)" style={{ filter: "blur(2px)" }} />
-                            </g>
-                          )}
-                        </g>
+                        {/* ━━ 管网背景主管线 (X=60 to 520, Y=110) ━━ */}
+                        <rect x="60" y="106" width="460" height="8" fill="url(#pipeG)" rx="2" stroke="#111" strokeWidth="0.5" />
 
-                        {/* Derived state: B support is needed when pressuresA is depleted during fire spraying */}
+                        {/* C 分配管支路 (X=80, 向下) */}
+                        <rect x="76" y="110" width="8" height="30" fill="url(#pipeG)" />
+                        {/* B 分配管支路 (X=260, 向下) */}
+                        <rect x="256" y="110" width="8" height="30" fill="url(#pipeG)" />
+                        {/* A 分配管支路 (X=500, 向下) */}
+                        <rect x="496" y="110" width="8" height="30" fill="url(#pipeG)" />
+
+                        {/* ━━ 动态气流发光叠加管路 (spraying / pump / valves 状态激活) ━━ */}
                         {(() => {
-                          const isAEmpty = pressuresA.every(p => p < 0.1);
-                          const isSupportNeeded = isAEmpty && (status === "spraying" || status === "pump");
+                          const isFlowActive = status === "spraying" || status === "pump" || status === "valves";
+                          if (!isFlowActive || !activeSupplier) return null;
+
+                          const flowStartX = activeSupplier === "A" ? 440 : activeSupplier === "B" ? 320 : activeSupplier === "C" ? 140 : 0;
+                          const flowEndX = targetZone === "A" ? 500 : targetZone === "B" ? 260 : targetZone === "C" ? 80 : 0;
 
                           return (
                             <>
-                              {/* ━━ 2. 总管隔离阀 (Manifold Isolation Valve) — x=80 ━━ */}
-                              {/* 只有在需要支援时才开启总管隔离阀 */}
-                              <g transform="translate(80, 25)">
-                                {/* 阀体三角 */}
-                                <polygon points="2,16 16,24 2,32" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
-                                <polygon points="30,16 16,24 30,32" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
-                                {/* 阀芯 */}
-                                <circle cx="16" cy="24" r="8" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
-                                {/* 电磁驱动头 */}
-                                <rect x="11" y="2" width="10" height="10" fill="url(#brassG)" rx="1.5" />
-                                {/* 旋转手柄 — 只有需要支援时才旋转开启(90度) */}
-                                <g transform={`translate(16, 24) rotate(${isSupportNeeded ? 90 : 0})`}
-                                  style={{ transition: "transform 0.5s ease" }}>
-                                  <line x1="0" y1="-7" x2="0" y2="7"
-                                    stroke={isSupportNeeded ? "var(--green)" : "var(--red)"} strokeWidth="2.5" strokeLinecap="round" />
-                                  <circle cx="0" cy="0" r="1.5" fill="#fff" />
-                                </g>
-                                <text x="16" y="58" fill="rgba(255,255,255,0.5)" fontSize="7.5" textAnchor="middle" fontWeight="bold">总管隔离阀</text>
-                                <text x="16" y="68" fill={isSupportNeeded ? "var(--green)" : "var(--muted)"} fontSize="6" textAnchor="middle">
-                                  {isSupportNeeded ? "支援联通中" : "常闭隔离"}
-                                </text>
-                              </g>
+                              {/* 活跃钢瓶软管气流 */}
+                              <path
+                                d={`M ${flowStartX} 135 Q ${flowStartX + (flowStartX === 320 ? -6 : 6)} 122 ${flowStartX} 110`}
+                                fill="none"
+                                stroke="var(--cyan)"
+                                strokeWidth="3"
+                                strokeDasharray="6,4"
+                                style={{ animation: "flowMove 1.0s infinite linear" }}
+                              />
 
-                              {/* ━━ 支援管路: 来自B站 ━━ */}
-                              <rect x="20" y="51" width="60" height="8" fill="url(#pipeG)" rx="2" />
-                              <text x="44" y="44" fill="rgba(77,231,255,0.4)" fontSize="6" textAnchor="middle">来自 B 站支援主管</text>
-                              {isSupportNeeded && (
-                                <rect x="20" y="53" width="60" height="4" fill="none"
-                                  stroke="var(--cyan)" strokeWidth="3" strokeDasharray="8,5"
-                                  style={{ animation: "flowMove 1.2s infinite linear" }} />
+                              {/* 主集流总管气流 */}
+                              <line
+                                x1={flowStartX}
+                                y1={110}
+                                x2={flowEndX}
+                                y2={110}
+                                stroke="var(--cyan)"
+                                strokeWidth="3.2"
+                                strokeDasharray="8,5"
+                                style={{ animation: `flowMove${flowStartX > flowEndX ? "Reverse" : ""} 1.2s infinite linear` }}
+                              />
+
+                              {/* 目标分配支路气流 */}
+                              {targetZone === "A" && (
+                                <line x1={500} y1={110} x2={500} y2={180} stroke="var(--cyan)" strokeWidth="3" strokeDasharray="6,4" style={{ animation: "flowMove 1.0s infinite linear" }} />
                               )}
-
-                              {/* ━━ 联通管路 2: 总管隔离阀 → 主集流排 ━━ */}
-                              <rect x="110" y="51" width="110" height="8" fill="url(#pipeG)" rx="2" />
-                              {isSupportNeeded && (
-                                <rect x="110" y="53" width="110" height="4" fill="none"
-                                  stroke="var(--cyan)" strokeWidth="3" strokeDasharray="8,5"
-                                  style={{ animation: "flowMove 1.2s infinite linear" }} />
+                              {targetZone === "B" && (
+                                <line x1={260} y1={110} x2={260} y2={180} stroke="var(--cyan)" strokeWidth="3" strokeDasharray="6,4" style={{ animation: "flowMove 1.0s infinite linear" }} />
                               )}
-
-                              {/* ━━ 主管道 1: 瓶头阀 → 主集流排 ━━ */}
-                              <path d="M 242 37 L 242 55" fill="none" stroke="url(#pipeG)" strokeWidth="8" />
-                              {(status === "pump" || status === "spraying") && !isAEmpty && (
-                                <line x1="242" y1="37" x2="242" y2="55" stroke="var(--cyan)" strokeWidth="3" strokeDasharray="6,4"
-                                  style={{ animation: "flowMove 1.0s infinite linear" }} />
-                              )}
-
-                              {/* ━━ 主集流排 ━━ */}
-                              <rect x="220" y="51" width="120" height="8" fill="url(#pipeG)" rx="3" />
-                              {(status === "pump" || status === "spraying") && (
-                                <rect x="220" y="53" width="120" height="4" fill="none"
-                                  stroke="var(--cyan)" strokeWidth="3" strokeDasharray="8,5"
-                                  style={{ animation: "flowMove 1.2s infinite linear" }} />
+                              {targetZone === "C" && (
+                                <line x1={80} y1={110} x2={80} y2={180} stroke="var(--cyan)" strokeWidth="3" strokeDasharray="6,4" style={{ animation: "flowMove 1.0s infinite linear" }} />
                               )}
                             </>
                           );
                         })()}
 
-                        {/* ━━ 3. 分配阀组 (Selector Valve) — x=340 ━━ */}
-                        <g transform="translate(340, 25)">
-                          {/* 阀体三角 */}
-                          <polygon points="0,16 18,28 0,40" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
-                          <polygon points="36,16 18,28 36,40" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
-                          {/* 阀芯 */}
-                          <circle cx="18" cy="28" r="11" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
-                          <circle cx="18" cy="28" r="8" fill="#1a202c" />
-                          <rect x="12" y="2" width="12" height="11" fill="url(#brassG)" rx="1.5" />
-                          {/* 旋转手轮 */}
-                          <g transform={`translate(18, 28) rotate(${zoneValveOpen ? 90 : 0})`}
-                            style={{ transition: "transform 0.8s ease-in-out" }}>
-                            <line x1="0" y1="-8" x2="0" y2="8"
-                              stroke={zoneValveOpen ? "var(--green)" : "var(--red)"} strokeWidth="3" strokeLinecap="round" />
-                            <circle cx="0" cy="0" r="2" fill="#fff" />
-                          </g>
-                          {/* 阀门开度进度弧 */}
-                          {status === "counting" && valveOpeningProgress > 0 && (
-                            <circle cx="18" cy="28" r="13" fill="none"
-                              stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round"
-                              strokeDasharray={`${(valveOpeningProgress / 100) * 81.7} 81.7`}
-                              transform="rotate(-90 18 28)"
-                              style={{ filter: "drop-shadow(0 0 3px var(--green))", transition: "stroke-dasharray 0.2s" }}
-                            />
-                          )}
-                          {status === "counting" && (
-                            <text x="18" y="52" fill="var(--green)" fontSize="7" textAnchor="middle" fontWeight="bold">
-                              {valveOpeningProgress}%
-                            </text>
-                          )}
-                          <text x="18" y="68" fill="rgba(255,255,255,0.5)" fontSize="7.5" textAnchor="middle" fontWeight="bold">分配阀组</text>
-                        </g>
-
-                        {/* ━━ 管道 3: 分配阀 → 喷嘴 ━━ */}
-                        <rect x="376" y="51" width="84" height="8" fill="url(#pipeG)" rx="3" />
-                        {sprayingActive && (
-                          <rect x="376" y="53" width="84" height="4" fill="none"
-                            stroke="var(--cyan)" strokeWidth="3" strokeDasharray="8,5"
-                            style={{ animation: "flowMove 1.2s infinite linear" }} />
-                        )}
-
-                        {/* ━━ 4. 气体喷嘴 — x=459 ━━ */}
-                        <g transform="translate(459, 25)">
-                          <polygon points="8,10 32,10 26,28 14,28" fill="url(#metalG)" stroke="#555" strokeWidth="0.8" />
-                          <rect x="17" y="28" width="6" height="8" fill="url(#metalG)" />
-                          {/* 喷射气雾 */}
-                          {sprayingActive && (
-                            <g style={{ animation: "flashBeacon 0.25s infinite alternate" }}>
-                              <path d="M 20 34 L -8 62 L 48 62 Z" fill="rgba(180,240,255,0.45)" style={{ filter: "blur(3px)" }} />
-                              <ellipse cx="12" cy="52" rx="5" ry="4" fill="rgba(200,255,255,0.5)" />
-                              <ellipse cx="28" cy="55" rx="6" ry="4.5" fill="rgba(200,255,255,0.45)" />
-                              <ellipse cx="20" cy="48" rx="4" ry="3" fill="rgba(255,255,255,0.6)" />
+                        {/* ━━ 1. 储气钢瓶 (Gas Cylinders) A, B, C ━━ */}
+                        {/* 灭火站 C (X=130) */}
+                        {(() => {
+                          const p = pressuresC[0];
+                          const active = activeSupplier === "C";
+                          return (
+                            <g transform="translate(130, 110)">
+                              <path d="M 10,0 Q 15,12 10,25" fill="none" stroke="url(#pipeG)" strokeWidth="3" />
+                              {active && sprayingActive && (
+                                <path d="M 10,0 Q 15,12 10,25" fill="none" stroke="var(--cyan)" strokeWidth="4" opacity="0.3" style={{ filter: "blur(2px)" }} />
+                              )}
+                              <rect x="6" y="25" width="8" height="8" fill="url(#brassG)" rx="0.5" />
+                              <circle cx="10" cy="23" r="2.5" fill="url(#brassG)" />
+                              <circle cx="10" cy="23" r="1.2" fill={active ? "var(--green)" : "#555"} style={{ filter: active ? "drop-shadow(0 0 3px var(--green))" : "none" }} />
+                              <rect x="0" y="33" width="20" height="52" fill="url(#cylGrad)" rx="3" stroke="#3d0a0a" strokeWidth="0.8" />
+                              <path d="M 0 37 C 0 29, 20 29, 20 37 Z" fill="url(#cylCapGrad)" />
+                              <circle cx="10" cy="52" r="6" fill="#fff" stroke="#333" strokeWidth="0.8" />
+                              <line x1="10" y1="52" x2={p < 0.15 ? 10 : 10 + 4 * Math.cos(-Math.PI * 0.25)} y2={p < 0.15 ? 56 : 52 - 4 * Math.sin(-Math.PI * 0.25)} stroke="#e74c3c" strokeWidth="1" />
+                              <text x="10" y="96" fill="#ff9999" fontSize="6.5" textAnchor="middle" fontWeight="bold">灭火站 C</text>
+                              <text x="10" y="105" fill={p < 0.2 ? "var(--red)" : "var(--green)"} fontSize="7" textAnchor="middle" fontWeight="bold" fontFamily="monospace">
+                                {p.toFixed(1)}M
+                              </text>
                             </g>
-                          )}
-                          <text x="20" y="70" fill="rgba(255,255,255,0.5)" fontSize="7.5" textAnchor="middle" fontWeight="bold">气体喷头</text>
+                          );
+                        })()}
+
+                        {/* 灭火站 B (X=310) */}
+                        {(() => {
+                          const p = pressuresB[0];
+                          const active = activeSupplier === "B";
+                          return (
+                            <g transform="translate(310, 110)">
+                              <path d="M 10,0 Q 15,12 10,25" fill="none" stroke="url(#pipeG)" strokeWidth="3" />
+                              {active && sprayingActive && (
+                                <path d="M 10,0 Q 15,12 10,25" fill="none" stroke="var(--cyan)" strokeWidth="4" opacity="0.3" style={{ filter: "blur(2px)" }} />
+                              )}
+                              <rect x="6" y="25" width="8" height="8" fill="url(#brassG)" rx="0.5" />
+                              <circle cx="10" cy="23" r="2.5" fill="url(#brassG)" />
+                              <circle cx="10" cy="23" r="1.2" fill={active ? "var(--green)" : "#555"} style={{ filter: active ? "drop-shadow(0 0 3px var(--green))" : "none" }} />
+                              <rect x="0" y="33" width="20" height="52" fill="url(#cylGrad)" rx="3" stroke="#3d0a0a" strokeWidth="0.8" />
+                              <path d="M 0 37 C 0 29, 20 29, 20 37 Z" fill="url(#cylCapGrad)" />
+                              <circle cx="10" cy="52" r="6" fill="#fff" stroke="#333" strokeWidth="0.8" />
+                              <line x1="10" y1="52" x2={p < 0.15 ? 10 : 10 + 4 * Math.cos(-Math.PI * 0.25)} y2={p < 0.15 ? 56 : 52 - 4 * Math.sin(-Math.PI * 0.25)} stroke="#e74c3c" strokeWidth="1" />
+                              <text x="10" y="96" fill="#ff9999" fontSize="6.5" textAnchor="middle" fontWeight="bold">灭火站 B</text>
+                              <text x="10" y="105" fill={p < 0.2 ? "var(--red)" : "var(--green)"} fontSize="7" textAnchor="middle" fontWeight="bold" fontFamily="monospace">
+                                {p.toFixed(1)}M
+                              </text>
+                            </g>
+                          );
+                        })()}
+
+                        {/* 灭火站 A (X=430) */}
+                        {(() => {
+                          const p = pressuresA[0];
+                          const active = activeSupplier === "A";
+                          return (
+                            <g transform="translate(430, 110)">
+                              <path d="M 10,0 Q 15,12 10,25" fill="none" stroke="url(#pipeG)" strokeWidth="3" />
+                              {active && sprayingActive && (
+                                <path d="M 10,0 Q 15,12 10,25" fill="none" stroke="var(--cyan)" strokeWidth="4" opacity="0.3" style={{ filter: "blur(2px)" }} />
+                              )}
+                              <rect x="6" y="25" width="8" height="8" fill="url(#brassG)" rx="0.5" />
+                              <circle cx="10" cy="23" r="2.5" fill="url(#brassG)" />
+                              <circle cx="10" cy="23" r="1.2" fill={active ? "var(--green)" : "#555"} style={{ filter: active ? "drop-shadow(0 0 3px var(--green))" : "none" }} />
+                              <rect x="0" y="33" width="20" height="52" fill="url(#cylGrad)" rx="3" stroke="#3d0a0a" strokeWidth="0.8" />
+                              <path d="M 0 37 C 0 29, 20 29, 20 37 Z" fill="url(#cylCapGrad)" />
+                              <circle cx="10" cy="52" r="6" fill="#fff" stroke="#333" strokeWidth="0.8" />
+                              <line x1="10" y1="52" x2={p < 0.15 ? 10 : 10 + 4 * Math.cos(-Math.PI * 0.25)} y2={p < 0.15 ? 56 : 52 - 4 * Math.sin(-Math.PI * 0.25)} stroke="#e74c3c" strokeWidth="1" />
+                              <text x="10" y="96" fill="#ff9999" fontSize="6.5" textAnchor="middle" fontWeight="bold">灭火站 A</text>
+                              <text x="10" y="105" fill={p < 0.2 ? "var(--red)" : "var(--green)"} fontSize="7" textAnchor="middle" fontWeight="bold" fontFamily="monospace">
+                                {p.toFixed(1)}M
+                              </text>
+                            </g>
+                          );
+                        })()}
+
+                        {/* ━━ 2. 总管隔离阀 (Manifold Isolation Valves) ━━ */}
+                        {/* 隔离阀 2 (X=200, B-C之间) */}
+                        <g transform="translate(190, 100)">
+                          <polygon points="2,2 10,10 2,18" fill="url(#metalG)" stroke="#333" strokeWidth="0.5" />
+                          <polygon points="18,2 10,10 18,18" fill="url(#metalG)" stroke="#333" strokeWidth="0.5" />
+                          <circle cx="10" cy="10" r="5" fill="#1a202c" stroke="#555" strokeWidth="0.8" />
+                          <g transform={`translate(10, 10) rotate(${finalValve2Open ? 90 : 0})`} style={{ transition: "transform 0.5s ease" }}>
+                            <line x1="0" y1="-7" x2="0" y2="7" stroke={finalValve2Open ? "var(--green)" : "var(--red)"} strokeWidth="2.5" strokeLinecap="round" />
+                            <circle cx="0" cy="0" r="1.5" fill="#fff" />
+                          </g>
+                          <text x="10" y="-10" fill={finalValve2Open ? "var(--green)" : "rgba(255,255,255,0.4)"} fontSize="7" textAnchor="middle" fontWeight="bold">隔离阀2</text>
+                          <text x="10" y="30" fill={finalValve2Open ? "var(--green)" : "var(--muted)"} fontSize="6" textAnchor="middle" fontWeight="bold">
+                            {finalValve2Open ? "🔓 联通" : "🔒 隔离"}
+                          </text>
                         </g>
 
-                        {/* ━━ 时序状态说明横幅 ━━ */}
-                        <rect x="20" y="116" width="518" height="24" fill="rgba(0,0,0,0.5)" rx="6" stroke="rgba(255,77,94,0.12)" />
-                        <text x="279" y="132"
-                          fill={sprayingActive ? "#ff4d5e" : status === "counting" ? "#ff9900" : status !== "safe" && status !== "aborted" ? "var(--cyan)" : "var(--muted)"}
-                          fontSize="9" textAnchor="middle" fontWeight="bold">
-                          {status === "safe" ? "🟢 1301 气体灭火系统就绪 — 等待火警联锁驱动..."
-                            : status === "alarmed" ? "🚨 火警报警触发：声警报已拉响，等待操作员确认..."
-                              : status === "confirming" ? "⚠️ 火警确认挂起：请操作员确认以开始 25 秒释放倒计时..."
-                                : status === "counting" ? `⏳ 25秒人员疏散倒计时：${countdown}秒 — 分配阀通电旋转开启中 [当前开度: ${valveOpeningProgress}%]`
-                                  : status === "pump" ? "⏳ 联动 Step-2：倒计时归零，瓶头阀（电磁瓶头阀）通电打开中..."
-                                    : status === "spraying" ? (pressuresA.every(p => p < 0.1) ? "🔥 跨区支援释放中：A站药剂耗尽，开启 A-B 隔离阀，由 B 站提供高压介质支援！" : "🔥 药剂释放中：1301 氟代烷灭火药剂正在集流管网中全力喷洒释放！")
-                                      : "🛑 联动系统中止：气相管网及分配阀门紧急锁死闭锁。"}
-                        </text>
+                        {/* 隔离阀 1 (X=380, A-B之间) */}
+                        <g transform="translate(370, 100)">
+                          <polygon points="2,2 10,10 2,18" fill="url(#metalG)" stroke="#333" strokeWidth="0.5" />
+                          <polygon points="18,2 10,10 18,18" fill="url(#metalG)" stroke="#333" strokeWidth="0.5" />
+                          <circle cx="10" cy="10" r="5" fill="#1a202c" stroke="#555" strokeWidth="0.8" />
+                          <g transform={`translate(10, 10) rotate(${finalValve1Open ? 90 : 0})`} style={{ transition: "transform 0.5s ease" }}>
+                            <line x1="0" y1="-7" x2="0" y2="7" stroke={finalValve1Open ? "var(--green)" : "var(--red)"} strokeWidth="2.5" strokeLinecap="round" />
+                            <circle cx="0" cy="0" r="1.5" fill="#fff" />
+                          </g>
+                          <text x="10" y="-10" fill={finalValve1Open ? "var(--green)" : "rgba(255,255,255,0.4)"} fontSize="7" textAnchor="middle" fontWeight="bold">隔离阀1</text>
+                          <text x="10" y="30" fill={finalValve1Open ? "var(--green)" : "var(--muted)"} fontSize="6" textAnchor="middle" fontWeight="bold">
+                            {finalValve1Open ? "🔓 联通" : "🔒 隔离"}
+                          </text>
+                        </g>
+
+                        {/* ━━ 3. 分配阀与防护区喷头 (Selector Valves & Zones) ━━ */}
+                        {/* 1301保护区 C (X=80, 向下) */}
+                        {(() => {
+                          const isOpen = zoneValveOpen && targetZone === "C";
+                          const isSpraying = sprayingActive && targetZone === "C";
+                          return (
+                            <g transform="translate(70, 134)">
+                              <polygon points="0,6 10,12 0,18" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                              <polygon points="20,6 10,12 20,18" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                              <circle cx="10" cy="12" r="5.5" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                              <g transform={`translate(10, 12) rotate(${isOpen ? 0 : 90})`} style={{ transition: "transform 0.6s ease" }}>
+                                <line x1="0" y1="-5.5" x2="0" y2="5.5" stroke={isOpen ? "var(--green)" : "var(--red)"} strokeWidth="2" strokeLinecap="round" />
+                                <circle cx="0" cy="0" r="1.2" fill="#fff" />
+                              </g>
+                              {/* 连通管段 */}
+                              <rect x="7" y="18" width="6" height="20" fill="url(#pipeG)" />
+                              {/* 1301 喷嘴 (Hex + Dome + Spray holes) */}
+                              <rect x="6" y="38" width="8" height="4" fill="url(#metalG)" />
+                              <polygon points="2,42 18,42 16,46 4,46" fill="url(#brassG)" stroke="#333" strokeWidth="0.5" />
+                              <path d="M 4,46 C 2,46 2,54 6,56 L 14,56 C 18,54 18,46 16,46 Z" fill="url(#metalG)" stroke="#444" strokeWidth="0.5" />
+                              <rect x="5" y="56" width="2" height="1.5" fill="#333" rx="0.3" />
+                              <rect x="9" y="56" width="2" height="1.5" fill="#333" rx="0.3" />
+                              <rect x="13" y="56" width="2" height="1.5" fill="#333" rx="0.3" />
+                              {/* 喷洒气雾 */}
+                              {isSpraying && (
+                                <g style={{ animation: "flashBeacon 0.25s infinite alternate" }}>
+                                  <path d="M 10 58 L -15 80 L 35 80 Z" fill="rgba(180,240,255,0.45)" style={{ filter: "blur(2.5px)" }} />
+                                  <ellipse cx="2" cy="74" rx="4" ry="3" fill="rgba(200,255,255,0.5)" />
+                                  <ellipse cx="18" cy="76" rx="4.5" ry="3" fill="rgba(200,255,255,0.45)" />
+                                  <ellipse cx="10" cy="70" rx="3.5" ry="2.5" fill="rgba(255,255,255,0.6)" />
+                                </g>
+                              )}
+                              <text x="10" y="88" fill="#fff" fontSize="8" textAnchor="middle" fontWeight="bold">1301保护区 C</text>
+                              <text x="10" y="98" fill={isOpen ? "var(--green)" : "var(--muted)"} fontSize="7" textAnchor="middle">
+                                {isOpen ? "分配阀C: 开启" : "分配阀C: 闭锁"}
+                              </text>
+                            </g>
+                          );
+                        })()}
+
+                        {/* 1301保护区 B (X=260, 向下) */}
+                        {(() => {
+                          const isOpen = zoneValveOpen && targetZone === "B";
+                          const isSpraying = sprayingActive && targetZone === "B";
+                          return (
+                            <g transform="translate(250, 134)">
+                              <polygon points="0,6 10,12 0,18" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                              <polygon points="20,6 10,12 20,18" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                              <circle cx="10" cy="12" r="5.5" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                              <g transform={`translate(10, 12) rotate(${isOpen ? 0 : 90})`} style={{ transition: "transform 0.6s ease" }}>
+                                <line x1="0" y1="-5.5" x2="0" y2="5.5" stroke={isOpen ? "var(--green)" : "var(--red)"} strokeWidth="2" strokeLinecap="round" />
+                                <circle cx="0" cy="0" r="1.2" fill="#fff" />
+                              </g>
+                              {/* 连通管段 */}
+                              <rect x="7" y="18" width="6" height="20" fill="url(#pipeG)" />
+                              {/* 1301 喷嘴 (Hex + Dome + Spray holes) */}
+                              <rect x="6" y="38" width="8" height="4" fill="url(#metalG)" />
+                              <polygon points="2,42 18,42 16,46 4,46" fill="url(#brassG)" stroke="#333" strokeWidth="0.5" />
+                              <path d="M 4,46 C 2,46 2,54 6,56 L 14,56 C 18,54 18,46 16,46 Z" fill="url(#metalG)" stroke="#444" strokeWidth="0.5" />
+                              <rect x="5" y="56" width="2" height="1.5" fill="#333" rx="0.3" />
+                              <rect x="9" y="56" width="2" height="1.5" fill="#333" rx="0.3" />
+                              <rect x="13" y="56" width="2" height="1.5" fill="#333" rx="0.3" />
+                              {/* 喷洒气雾 */}
+                              {isSpraying && (
+                                <g style={{ animation: "flashBeacon 0.25s infinite alternate" }}>
+                                  <path d="M 10 58 L -15 80 L 35 80 Z" fill="rgba(180,240,255,0.45)" style={{ filter: "blur(2.5px)" }} />
+                                  <ellipse cx="2" cy="74" rx="4" ry="3" fill="rgba(200,255,255,0.5)" />
+                                  <ellipse cx="18" cy="76" rx="4.5" ry="3" fill="rgba(200,255,255,0.45)" />
+                                  <ellipse cx="10" cy="70" rx="3.5" ry="2.5" fill="rgba(255,255,255,0.6)" />
+                                </g>
+                              )}
+                              <text x="10" y="88" fill="#fff" fontSize="8" textAnchor="middle" fontWeight="bold">1301保护区 B</text>
+                              <text x="10" y="98" fill={isOpen ? "var(--green)" : "var(--muted)"} fontSize="7" textAnchor="middle">
+                                {isOpen ? "分配阀B: 开启" : "分配阀B: 闭锁"}
+                              </text>
+                            </g>
+                          );
+                        })()}
+
+                        {/* 1301保护区 A (X=500, 向下) */}
+                        {(() => {
+                          const isOpen = zoneValveOpen && targetZone === "A";
+                          const isSpraying = sprayingActive && targetZone === "A";
+                          return (
+                            <g transform="translate(490, 134)">
+                              <polygon points="0,6 10,12 0,18" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                              <polygon points="20,6 10,12 20,18" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                              <circle cx="10" cy="12" r="5.5" fill="url(#metalG)" stroke="#444" strokeWidth="0.8" />
+                              <g transform={`translate(10, 12) rotate(${isOpen ? 0 : 90})`} style={{ transition: "transform 0.6s ease" }}>
+                                <line x1="0" y1="-5.5" x2="0" y2="5.5" stroke={isOpen ? "var(--green)" : "var(--red)"} strokeWidth="2" strokeLinecap="round" />
+                                <circle cx="0" cy="0" r="1.2" fill="#fff" />
+                              </g>
+                              {/* 连通管段 */}
+                              <rect x="7" y="18" width="6" height="20" fill="url(#pipeG)" />
+                              {/* 1301 喷嘴 (Hex + Dome + Spray holes) */}
+                              <rect x="6" y="38" width="8" height="4" fill="url(#metalG)" />
+                              <polygon points="2,42 18,42 16,46 4,46" fill="url(#brassG)" stroke="#333" strokeWidth="0.5" />
+                              <path d="M 4,46 C 2,46 2,54 6,56 L 14,56 C 18,54 18,46 16,46 Z" fill="url(#metalG)" stroke="#444" strokeWidth="0.5" />
+                              <rect x="5" y="56" width="2" height="1.5" fill="#333" rx="0.3" />
+                              <rect x="9" y="56" width="2" height="1.5" fill="#333" rx="0.3" />
+                              <rect x="13" y="56" width="2" height="1.5" fill="#333" rx="0.3" />
+                              {/* 喷洒气雾 */}
+                              {isSpraying && (
+                                <g style={{ animation: "flashBeacon 0.25s infinite alternate" }}>
+                                  <path d="M 10 58 L -15 80 L 35 80 Z" fill="rgba(180,240,255,0.45)" style={{ filter: "blur(2.5px)" }} />
+                                  <ellipse cx="2" cy="74" rx="4" ry="3" fill="rgba(200,255,255,0.5)" />
+                                  <ellipse cx="18" cy="76" rx="4.5" ry="3" fill="rgba(200,255,255,0.45)" />
+                                  <ellipse cx="10" cy="70" rx="3.5" ry="2.5" fill="rgba(255,255,255,0.6)" />
+                                </g>
+                              )}
+                              <text x="10" y="88" fill="#fff" fontSize="8" textAnchor="middle" fontWeight="bold">1301保护区 A</text>
+                              <text x="10" y="98" fill={isOpen ? "var(--green)" : "var(--muted)"} fontSize="7" textAnchor="middle">
+                                {isOpen ? "分配阀A: 开启" : "分配阀A: 闭锁"}
+                              </text>
+                            </g>
+                          );
+                        })()}
+
                       </svg>
                     </div>
+
+                    {/* ── 联动逻辑测试控制面板 ── */}
+                    <div style={{
+                      display: "flex", flexWrap: "wrap", gap: "12px",
+                      background: "rgba(0, 0, 0, 0.35)", border: "1px solid var(--line)",
+                      borderRadius: "10px", padding: "12px 16px", marginTop: "12px"
+                    }}>
+                      {/* 1. 防护区选择 */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <span style={{ fontSize: "10px", color: "var(--muted)", fontWeight: "bold" }}>① 模拟火警防护区</span>
+                        <div style={{ display: "flex", gap: "4px", background: "rgba(0,0,0,0.3)", padding: "2px", borderRadius: "6px" }}>
+                          {(["A", "B", "C"] as const).map(zone => (
+                            <button
+                              key={zone}
+                              onClick={() => { if (status === "safe") setTargetZone(zone); }}
+                              disabled={status !== "safe"}
+                              style={{
+                                background: targetZone === zone ? "var(--cyan)" : "transparent",
+                                color: targetZone === zone ? "#000" : "var(--muted)",
+                                border: 0, borderRadius: "4px", fontSize: "10.5px", padding: "4px 10px",
+                                cursor: status === "safe" ? "pointer" : "not-allowed", fontWeight: "bold"
+                              }}
+                            >
+                              防护区 {zone}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 2. 气源站药剂状态设置 */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: "260px" }}>
+                        <span style={{ fontSize: "10px", color: "var(--muted)", fontWeight: "bold" }}>② 设置钢瓶药剂状态 (模拟站内药剂耗尽)</span>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          {/* 灭火站 A */}
+                          <button
+                            onClick={() => {
+                              setPressuresA(pressuresA[0] > 0 ? Array(7).fill(0) : Array(7).fill(2.0));
+                            }}
+                            style={{
+                              background: pressuresA[0] > 0 ? "rgba(77, 231, 255, 0.12)" : "rgba(255, 77, 94, 0.15)",
+                              border: pressuresA[0] > 0 ? "1px solid rgba(77, 231, 255, 0.3)" : "1px solid rgba(255, 77, 94, 0.4)",
+                              color: pressuresA[0] > 0 ? "var(--cyan)" : "#ff4d5e",
+                              borderRadius: "6px", fontSize: "10.5px", padding: "6px 10px", cursor: "pointer", fontWeight: "bold", flex: 1
+                            }}
+                          >
+                            灭火站 A: {pressuresA[0] > 0 ? "充盈 (2.0M)" : "耗尽 (0M)"}
+                          </button>
+
+                          {/* 灭火站 B */}
+                          <button
+                            onClick={() => {
+                              setPressuresB(pressuresB[0] > 0 ? Array(7).fill(0) : Array(7).fill(2.0));
+                            }}
+                            style={{
+                              background: pressuresB[0] > 0 ? "rgba(77, 231, 255, 0.12)" : "rgba(255, 77, 94, 0.15)",
+                              border: pressuresB[0] > 0 ? "1px solid rgba(77, 231, 255, 0.3)" : "1px solid rgba(255, 77, 94, 0.4)",
+                              color: pressuresB[0] > 0 ? "var(--cyan)" : "#ff4d5e",
+                              borderRadius: "6px", fontSize: "10.5px", padding: "6px 10px", cursor: "pointer", fontWeight: "bold", flex: 1
+                            }}
+                          >
+                            灭火站 B: {pressuresB[0] > 0 ? "充盈 (2.0M)" : "耗尽 (0M)"}
+                          </button>
+
+                          {/* 灭火站 C */}
+                          <button
+                            onClick={() => {
+                              setPressuresC(pressuresC[0] > 0 ? Array(7).fill(0) : Array(7).fill(2.0));
+                            }}
+                            style={{
+                              background: pressuresC[0] > 0 ? "rgba(77, 231, 255, 0.12)" : "rgba(255, 77, 94, 0.15)",
+                              border: pressuresC[0] > 0 ? "1px solid rgba(77, 231, 255, 0.3)" : "1px solid rgba(255, 77, 94, 0.4)",
+                              color: pressuresC[0] > 0 ? "var(--cyan)" : "#ff4d5e",
+                              borderRadius: "6px", fontSize: "10.5px", padding: "6px 10px", cursor: "pointer", fontWeight: "bold", flex: 1
+                            }}
+                          >
+                            灭火站 C: {pressuresC[0] > 0 ? "充盈 (2.0M)" : "耗尽 (0M)"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
 
                 ) : (
