@@ -242,8 +242,13 @@ export const useFireStore = create<FireState>((set) => ({
             action: "回路拓扑手动测试触发",
             operator: "系统管理员"
           }
-        ]
+        ],
+        needLinkage: dev.needLinkage,
+        linkageType: dev.linkageType
       };
+
+      // 手动触发回路设备火警时，同样需要向 eventBus 广播报警创建消息，以联动灭火控制器
+      eventBus.emit("alarm:created", { alarm: newAlarm });
 
       const updatedControllers = state.controllers.map((c) => {
         if (c.id !== ctrlId) return c;

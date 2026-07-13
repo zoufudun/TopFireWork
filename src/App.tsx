@@ -16,6 +16,7 @@ import { DeviceStatus } from "./components/DeviceStatus";
 import { DigitalTwin } from "./components/DigitalTwin";
 import { LoopTopology } from "./components/LoopTopology";
 import { Overview } from "./components/Overview";
+import { FireLinkage } from "./components/FireLinkage";
 import { eventBus } from "./events/eventBus";
 import {
   startSimulator,
@@ -33,7 +34,8 @@ const navItems: Array<{
   { id: "alarms", label: "告警中心", icon: BellRing },
   { id: "twin", label: "数字孪生", icon: Boxes },
   { id: "devices", label: "设备状态", icon: ServerCog },
-  { id: "topology", label: "回路拓扑", icon: Network }
+  { id: "topology", label: "回路拓扑", icon: Network },
+  { id: "linkage", label: "灭火联动", icon: RadioTower }
 ];
 
 export default function App() {
@@ -81,6 +83,8 @@ export default function App() {
         return <DeviceStatus />;
       case "topology":
         return <LoopTopology />;
+      case "linkage":
+        return <FireLinkage />;
       default:
         return <Overview />;
     }

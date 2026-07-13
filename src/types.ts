@@ -59,6 +59,8 @@ export interface Alarm {
   updatedAt: string;
   assignee?: string;
   timeline: AlarmTimelineItem[];
+  needLinkage?: boolean;                             // 是否需要联动灭火
+  linkageType?: "1301" | "mist";                      // 属于 1301 气体灭火区还是细水雾灭火区
 }
 
 export interface FloorZone {
@@ -78,7 +80,8 @@ export type PageKey =
   | "alarms"
   | "twin"
   | "devices"
-  | "topology";
+  | "topology"
+  | "linkage";
 
 export interface TelemetryPayload {
   deviceId: string;
@@ -109,6 +112,8 @@ export interface TopologyDevice {
   serialNumber?: string;
   personalityCode?: string;
   location?: string;
+  needLinkage?: boolean;                             // 是否需要联动灭火
+  linkageType?: "1301" | "mist";                      // 属于 1301 气体灭火区还是细水雾灭火区
 }
 
 export interface FireLoop {

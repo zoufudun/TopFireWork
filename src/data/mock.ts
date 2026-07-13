@@ -240,7 +240,9 @@ function generateMockControllers(): ControllerNode[] {
           status: "online",
           value: val,
           unit: type === "smoke" ? "ppm" : "℃",
-          lastSeen: now()
+          lastSeen: now(),
+          needLinkage: true,
+          linkageType: addr % 2 === 0 ? "1301" : "mist"
         };
       });
 
@@ -262,7 +264,9 @@ function generateMockControllers(): ControllerNode[] {
           name: `${modIdx}#模块 ${actualLoopNum}#回路 ${addr}号${typeName}`,
           type,
           status: "online",
-          lastSeen: now()
+          lastSeen: now(),
+          needLinkage: type === "manual", // 手动按钮属于火警，需要联动；模块通常不需要直接启动本区灭火
+          linkageType: addr % 2 === 0 ? "1301" : "mist"
         };
       });
 
@@ -305,7 +309,9 @@ function generateMockControllers(): ControllerNode[] {
           status: "online",
           value: val,
           unit: type === "smoke" ? "ppm" : "℃",
-          lastSeen: now()
+          lastSeen: now(),
+          needLinkage: true,
+          linkageType: addr % 2 === 0 ? "1301" : "mist"
         };
       });
 
@@ -326,7 +332,9 @@ function generateMockControllers(): ControllerNode[] {
           name: `${modIdx}#模块 ${loopNum}#回路 ${addr}号${typeName}`,
           type,
           status: "online",
-          lastSeen: now()
+          lastSeen: now(),
+          needLinkage: type === "manual",
+          linkageType: addr % 2 === 0 ? "1301" : "mist"
         };
       });
 
@@ -369,7 +377,9 @@ function generateMockControllers(): ControllerNode[] {
           status: "online",
           value: val,
           unit: type === "smoke" ? "ppm" : "℃",
-          lastSeen: now()
+          lastSeen: now(),
+          needLinkage: true,
+          linkageType: addr % 2 === 0 ? "1301" : "mist"
         };
       });
 
@@ -387,7 +397,9 @@ function generateMockControllers(): ControllerNode[] {
           name: `${modIdx}#模块 ${loopNum}#回路 ${addr}号${typeName}`,
           type,
           status: "online",
-          lastSeen: now()
+          lastSeen: now(),
+          needLinkage: type === "manual",
+          linkageType: addr % 2 === 0 ? "1301" : "mist"
         };
       });
 

@@ -1467,18 +1467,19 @@ export function LoopTopology() {
               </div>
             </div>
 
-            {/* Full-screen floating sparks overlay */}
+            {/* Full-screen floating sparks & smoke overlay */}
             {hasLoopFire && (
               <div className="fire-embers-overlay">
-                {Array.from({ length: 35 }).map((_, i) => {
-                  const size = Math.random() * 5 + 3; // 3px to 8px
+                {/* Dense Embers Sparks (75 particles) */}
+                {Array.from({ length: 75 }).map((_, i) => {
+                  const size = Math.random() * 6 + 3; // 3px to 9px
                   const left = Math.random() * 100; // 0% to 100%
                   const delay = Math.random() * 6; // 0s to 6s
-                  const duration = Math.random() * 4 + 4; // 4s to 8s
-                  const sway = (Math.random() * 80 - 40) + "px"; // -40px to 40px
+                  const duration = Math.random() * 3 + 3; // 3s to 6s
+                  const sway = (Math.random() * 100 - 50) + "px"; // -50px to 50px
                   return (
                     <div
-                      key={i}
+                      key={`ember-${i}`}
                       className="ember-particle"
                       style={{
                         left: `${left}%`,
@@ -1487,6 +1488,29 @@ export function LoopTopology() {
                         animationDelay: `${delay}s`,
                         animationDuration: `${duration}s`,
                         ...({ "--sway": sway } as React.CSSProperties)
+                      }}
+                    />
+                  );
+                })}
+
+                {/* Drifting Smoke Particles (25 particles) */}
+                {Array.from({ length: 25 }).map((_, i) => {
+                  const size = Math.random() * 70 + 50; // 50px to 120px
+                  const left = Math.random() * 100; // 0% to 100%
+                  const delay = Math.random() * 8; // 0s to 8s
+                  const duration = Math.random() * 4 + 7; // 7s to 11s
+                  const drift = (Math.random() * 160 - 80) + "px"; // -80px to 80px
+                  return (
+                    <div
+                      key={`smoke-${i}`}
+                      className="smoke-particle"
+                      style={{
+                        left: `${left}%`,
+                        width: `${size}px`,
+                        height: `${size}px`,
+                        animationDelay: `${delay}s`,
+                        animationDuration: `${duration}s`,
+                        ...({ "--drift": drift } as React.CSSProperties)
                       }}
                     />
                   );
@@ -1505,12 +1529,57 @@ export function LoopTopology() {
                   </div>
                 </div>
 
-                {/* Animated CSS Fire Flame element */}
-                <div className="fire-flame-panel">
-                  <div className="flame-wrapper">
-                    <div className="flame-outer" />
-                    <div className="flame-main" />
-                    <div className="flame-core" />
+                {/* Animated SVG Roaring Flame Graphics */}
+                <div className="fire-flame-panel" style={{ width: "240px", height: "130px", right: "20px", bottom: "-30px", overflow: "visible" }}>
+                  <svg viewBox="0 0 100 120" style={{ width: "100%", height: "100%", overflow: "visible" }}>
+                    <defs>
+                      <linearGradient id="flameOuterGrad" x1="0" y1="1" x2="0" y2="0">
+                        <stop offset="0%" stop-color="#990000" />
+                        <stop offset="30%" stop-color="#ff3b30" />
+                        <stop offset="70%" stop-color="#ff9500" />
+                        <stop offset="100%" stop-color="#ffcc00" stop-opacity="0" />
+                      </linearGradient>
+                      <linearGradient id="flameMainGrad" x1="0" y1="1" x2="0" y2="0">
+                        <stop offset="0%" stop-color="#ff5e00" />
+                        <stop offset="75%" stop-color="#ffcc00" />
+                        <stop offset="100%" stop-color="#ffcc00" stop-opacity="0" />
+                      </linearGradient>
+                      <linearGradient id="flameCoreGrad" x1="0" y1="1" x2="0" y2="0">
+                        <stop offset="0%" stop-color="#ffe600" />
+                        <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+                      </linearGradient>
+                      <filter id="glow">
+                        <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+                        <feMerge>
+                          <feMergeNode in="coloredBlur"/>
+                          <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                      </filter>
+                    </defs>
+                    
+                    {/* Layer 1: Outer Back Flame */}
+                    <path d="M 50 110 C 20 110, 10 70, 42 20 C 45 40, 55 40, 58 20 C 90 70, 80 110, 50 110 Z" fill="url(#flameOuterGrad)" filter="url(#glow)" className="flame-outer" />
+                    
+                    {/* Layer 2: Main Middle Flame */}
+                    <path d="M 50 110 C 28 110, 20 78, 45 35 C 47 48, 53 48, 55 35 C 80 78, 72 110, 50 110 Z" fill="url(#flameMainGrad)" filter="url(#glow)" className="flame-main" />
+                    
+                    {/* Layer 3: Inner Core */}
+                    <path d="M 50 110 C 35 110, 30 85, 47 50 C 49 60, 51 60, 53 50 C 70 85, 65 110, 50 110 Z" fill="url(#flameCoreGrad)" className="flame-core" />
+                  </svg>
+
+                  {/* Local thick smoke particles inside the panel */}
+                  <div style={{ position: "absolute", left: "0", right: "0", top: "0", bottom: "0", pointerEvents: "none", overflow: "hidden" }}>
+                    {Array.from({ length: 8 }).map((_, idx) => (
+                      <div key={idx} className="smoke-particle" style={{
+                        left: `${20 + Math.random() * 60}%`,
+                        width: `${30 + Math.random() * 30}px`,
+                        height: `${30 + Math.random() * 30}px`,
+                        bottom: "-10px",
+                        animationDuration: `${3 + Math.random() * 3}s`,
+                        animationDelay: `${idx * 0.4}s`,
+                        ...({ "--drift": `${Math.random() * 60 - 30}px` } as React.CSSProperties)
+                      }} />
+                    ))}
                   </div>
                 </div>
 
@@ -1991,6 +2060,28 @@ export function LoopTopology() {
                           <tr>
                             <td>设备个性代码:</td>
                             <td className="monospace">{selectedDevice.personalityCode || `PC-CODE-${selectedDevice.address}`}</td>
+                          </tr>
+                          <tr>
+                            <td>是否开启灭火联动:</td>
+                            <td>
+                              {selectedDevice.needLinkage ? (
+                                <span style={{ color: "var(--green)", fontWeight: "bold" }}>🟢 是 (联锁使能)</span>
+                              ) : (
+                                <span className="text-muted">⚪ 否 (屏蔽/闭锁)</span>
+                              )}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>灭火保护区划分:</td>
+                            <td>
+                              {selectedDevice.linkageType === "1301" ? (
+                                <span style={{ color: "var(--red)", fontWeight: "bold" }}>🔥 1301气体灭火区</span>
+                              ) : selectedDevice.linkageType === "mist" ? (
+                                <span style={{ color: "var(--cyan)", fontWeight: "bold" }}>💧 高压细水雾区</span>
+                              ) : (
+                                <span className="text-muted">未分配保护区</span>
+                              )}
+                            </td>
                           </tr>
                           <tr>
                             <td>物理布置位置:</td>

@@ -207,11 +207,24 @@ export function AlarmCenter() {
 
       if (typeA === "fire" && typeB !== "fire") return -1;
       if (typeA !== "fire" && typeB === "fire") return 1;
-
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
     return list;
   }, [filteredAlarms]);
+
+  const stats = useMemo(() => {
+    let total = alarms.length;
+    let fire = 0;
+    let fault = 0;
+    let statusVal = 0;
+    alarms.forEach((a) => {
+      const type = getAlarmType(a);
+      if (type === "fire") fire++;
+      else if (type === "fault") fault++;
+      else if (type === "status") statusVal++;
+    });
+    return { total, fire, fault, status: statusVal };
+  }, [alarms]);
 
   const selectedAlarm = alarms.find(
     (alarm) => alarm.id === selectedAlarmId
@@ -257,10 +270,65 @@ export function AlarmCenter() {
             <span className="eyebrow">ALARM WORKBENCH</span>
             <h2>告警控制台</h2>
           </div>
+        </div>
 
-          <strong className="queue-total" style={{ background: "rgba(77, 231, 255, 0.12)", color: "var(--cyan)", border: "1px solid rgba(77, 231, 255, 0.2)" }}>
-            {sortedAlarms.length} 记录
-          </strong>
+        {/* Classification Counter Cards */}
+        <div className="alarm-stats-grid">
+          <button
+            className={`alarm-stat-card total ${filterType === "all" ? "active" : ""}`}
+            onClick={() => setFilterType("all")}
+          >
+            <div className="stat-icon-wrapper">
+              <Layers size={16} />
+            </div>
+            <div className="stat-info">
+              <span className="stat-label">总数记录</span>
+              <strong className="stat-val">{stats.total}</strong>
+            </div>
+            <span className="stat-status-dot total" />
+          </button>
+
+          <button
+            className={`alarm-stat-card fire ${filterType === "fire" ? "active" : ""}`}
+            onClick={() => setFilterType(filterType === "fire" ? "all" : "fire")}
+          >
+            <div className="stat-icon-wrapper">
+              <Flame size={16} />
+            </div>
+            <div className="stat-info">
+              <span className="stat-label">火警数量</span>
+              <strong className="stat-val">{stats.fire}</strong>
+            </div>
+            <span className="stat-status-dot fire" style={{ animation: stats.fire > 0 ? "blinkActive 0.6s infinite alternate" : "none" }} />
+          </button>
+
+          <button
+            className={`alarm-stat-card fault ${filterType === "fault" ? "active" : ""}`}
+            onClick={() => setFilterType(filterType === "fault" ? "all" : "fault")}
+          >
+            <div className="stat-icon-wrapper">
+              <AlertTriangle size={16} />
+            </div>
+            <div className="stat-info">
+              <span className="stat-label">故障数量</span>
+              <strong className="stat-val">{stats.fault}</strong>
+            </div>
+            <span className="stat-status-dot fault" />
+          </button>
+
+          <button
+            className={`alarm-stat-card status ${filterType === "status" ? "active" : ""}`}
+            onClick={() => setFilterType(filterType === "status" ? "all" : "status")}
+          >
+            <div className="stat-icon-wrapper">
+              <Info size={16} />
+            </div>
+            <div className="stat-info">
+              <span className="stat-label">状态数量</span>
+              <strong className="stat-val">{stats.status}</strong>
+            </div>
+            <span className="stat-status-dot status" />
+          </button>
         </div>
 
         {/* 1. Integrated Search & Advanced Queries Grid */}
@@ -591,9 +659,35 @@ export function AlarmCenter() {
                     display: "flex",
                     alignItems: "center",
                     padding: "12px 20px",
-                    borderBottom: "1px solid rgba(255,255,255,0.02)"
+                    borderBottom: "1px solid rgba(255,255,255,0.02)",
+                    position: "relative",
+                    overflow: "hidden"
                   }}
                 >
+                  {type === "fire" && (
+                    <div className="spark-container" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, overflow: "hidden", pointerEvents: "none" }}>
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <span
+                          key={i}
+                          className="spark-particle"
+                          style={{
+                            position: "absolute",
+                            bottom: "-4px",
+                            left: `${15 + i * 18}%`,
+                            width: `${2 + (i % 2)}px`,
+                            height: `${2 + (i % 2)}px`,
+                            backgroundColor: i % 2 === 0 ? "#ff7675" : "#ffbe76",
+                            borderRadius: "50%",
+                            boxShadow: "0 0 4px rgba(255, 118, 117, 0.9), 0 0 8px rgba(255, 77, 94, 0.7)",
+                            animation: `sparkRise ${1.2 + (i % 3) * 0.3}s infinite ease-out`,
+                            animationDelay: `${i * 0.15}s`,
+                            // @ts-ignore
+                            "--drift": `${(i % 2 === 0 ? -12 : 12) + (i % 3) * 4}px`
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
                   <span className="level-badge" style={{
                     background: type === "fire" ? "rgba(255, 77, 94, 0.2)" : type === "fault" ? "rgba(255, 186, 82, 0.2)" : "rgba(77, 231, 255, 0.2)",
                     color: type === "fire" ? "#ff4d5e" : type === "fault" ? "#ffba52" : "#4de7ff",
@@ -601,10 +695,10 @@ export function AlarmCenter() {
                     fontWeight: "bold",
                     padding: "2px 6px",
                     borderRadius: "4px",
-                    minWidth: "40px",
+                    minWidth: "60px",
                     textAlign: "center"
                   }}>
-                    {type === "fire" ? "火警" : type === "fault" ? "故障" : "提示"}
+                    {`L${alarm.level} · ${type === "fire" ? "火警" : type === "fault" ? "故障" : "提示"}`}
                   </span>
 
                   <span className="alarm-main" style={{ flexGrow: 1, paddingLeft: "12px", textAlign: "left" }}>
@@ -664,6 +758,18 @@ export function AlarmCenter() {
                   )}
                 </dd>
               </div>
+              {getAlarmType(selectedAlarm) === "fire" && (
+                <div>
+                  <dt>防消灭火模式</dt>
+                  <dd>
+                    {selectedAlarm.linkageType === "mist" || (!selectedAlarm.linkageType && selectedAlarm.floorId !== "B1") ? (
+                      <span style={{ color: "var(--cyan)", fontWeight: "bold" }}>💧 联锁高压细水雾灭火</span>
+                    ) : (
+                      <span style={{ color: "var(--red)", fontWeight: "bold" }}>🔥 联锁 1301 气体灭火</span>
+                    )}
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt>事件地址</dt>
                 <dd style={{ color: "#4de7ff", fontFamily: "monospace", fontSize: "12px", fontWeight: "bold", wordBreak: "break-all" }}>
