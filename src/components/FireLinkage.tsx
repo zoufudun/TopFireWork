@@ -12,7 +12,8 @@ import {
   Volume2,
   VolumeX,
   Check,
-  Zap
+  Zap,
+  Lock
 } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
 import { eventBus } from "../events/eventBus";
@@ -31,6 +32,11 @@ type LinkageStatus =
   | "aborted";     // 紧急停止中止
 
 export function FireLinkage() {
+  const { pendingLinkageAutoStart, pendingLinkageMethod, setPendingLinkageAutoStart, loginMode, logout } = useFireStore();
+
+  const [delay1301, setDelay1301] = useState(25);
+  const [delayMist, setDelayMist] = useState(5);
+
   const [method, setMethod] = useState<ExtinguishMethod>("1301");
   const [mode, setMode] = useState<LinkageMode>("auto");
   const [status, setStatus] = useState<LinkageStatus>("safe");
@@ -131,7 +137,6 @@ export function FireLinkage() {
   }, [pressuresA, pressuresB, pressuresC, activeSupplier, method]);
 
   // 为操作员从全局提示层进入联动页面时，自动启动火警确认流程
-  const { pendingLinkageAutoStart, pendingLinkageMethod, setPendingLinkageAutoStart } = useFireStore();
 
   useEffect(() => {
     if (pendingLinkageAutoStart) {
@@ -149,20 +154,20 @@ export function FireLinkage() {
   useEffect(() => {
     if (status === "safe") {
       if (method === "1301") {
-        setCountdown(25);
+        setCountdown(delay1301);
         setCylinderPressure(2.0); // 1301气体满瓶为 2.0 MPa
         setPressuresA([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
         setPressuresB([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
         setPressuresC([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
       } else {
-        setCountdown(5);
+        setCountdown(delayMist);
         setCylinderPressure(4.2); // 细水雾初始氮气稳压为 4.2 MPa
         setPressuresA([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
         setPressuresB([15.0, 4.2, 4.2, 4.2, 4.2, 4.2, 4.2]);
         setPressuresC([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
       }
     }
-  }, [method, status]);
+  }, [method, status, delay1301, delayMist]);
 
   // 监听真实回路设备的火警事件，自动触发联动控制逻辑
   useEffect(() => {
@@ -406,10 +411,15 @@ export function FireLinkage() {
     if (status === "confirming") {
       if (method === "1301") {
         setStatus("counting");
-        setCountdown(25);
+        setCountdown(delay1301);
       } else {
-        // 细水雾：火警确认后，不需要倒计时，直接进入开阀状态 (valves)
-        setStatus("valves");
+        // 细水雾：若延时大于 0，进入倒计时，否则直接进入开阀状态 (valves)
+        if (delayMist > 0) {
+          setStatus("counting");
+          setCountdown(delayMist);
+        } else {
+          setStatus("valves");
+        }
       }
     }
   }
@@ -469,13 +479,13 @@ export function FireLinkage() {
     setValveABOpen(false);
     setValveBCOpen(false);
     if (method === "1301") {
-      setCountdown(25);
+      setCountdown(delay1301);
       setCylinderPressure(2.0);
       setPressuresA([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
       setPressuresB([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
       setPressuresC([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
     } else {
-      setCountdown(0); // 细水雾没有倒计时
+      setCountdown(delayMist);
       setCylinderPressure(4.2);
       setPressuresA([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]);
       setPressuresB([15.0, 4.2, 4.2, 4.2, 4.2, 4.2, 4.2]);
@@ -777,8 +787,8 @@ export function FireLinkage() {
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <RadioTower size={24} className="text-cyan" style={{ animation: status !== "safe" && status !== "aborted" ? "flash 0.8s infinite alternate" : "none" }} />
               <div>
-                <h2 style={{ margin: 0, fontSize: "17px", color: "#fff", fontWeight: "bold" }}>联动控制器参数面板</h2>
-                <span style={{ fontSize: "11px", color: "var(--muted)" }}>配置防护区的灭火介质形态及逻辑触发时序</span>
+                <h2 style={{ margin: 0, fontSize: "17px", color: "#fff", fontWeight: "bold" }}>模拟训练中心 - 联动灭火仿真</h2>
+                <span style={{ fontSize: "11px", color: "var(--muted)" }}>配置模拟防护区的灭火介质形态及联动延时时序</span>
               </div>
             </div>
 
@@ -866,11 +876,63 @@ export function FireLinkage() {
                   <span>{isMuted ? "已静音模拟" : "物理声警报开"}</span>
                 </button>
               </div>
+
+              {/* 4. 联动延时设置 */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "11px", color: "var(--muted)", fontWeight: "bold" }}>
+                  {method === "1301" ? "1301 联动延时 (秒)" : "细水雾联动延时 (秒)"}
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <input
+                    type="range"
+                    min={method === "1301" ? "5" : "0"}
+                    max="60"
+                    value={method === "1301" ? delay1301 : delayMist}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (method === "1301") {
+                        setDelay1301(val);
+                        if (status === "safe") setCountdown(val);
+                      } else {
+                        setDelayMist(val);
+                        if (status === "safe") setCountdown(val);
+                      }
+                    }}
+                    disabled={status !== "safe"}
+                    style={{
+                      width: "80px",
+                      height: "4px",
+                      accentColor: "var(--cyan)",
+                      cursor: status === "safe" ? "pointer" : "not-allowed"
+                    }}
+                  />
+                  <span style={{ fontSize: "11px", color: "var(--cyan)", fontWeight: "bold", width: "24px", textAlign: "right" }}>
+                    {method === "1301" ? delay1301 : delayMist}s
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* 主面板 Grid：左侧控制台，右侧状态机与硬件监视 */}
-          <div className="linkage-panel-grid">
+          <div style={{ position: "relative" }}>
+            {loginMode === "real" && (
+              <div className="readonly-physical-lock-overlay">
+                <div className="readonly-lock-content">
+                  <div className="readonly-lock-icon-box">
+                    <Lock size={30} color="#ff4d5e" />
+                  </div>
+                  <h3>🔒 模拟灭火控制已物理闭锁</h3>
+                  <p>
+                    当前系统以<strong>【真实现实】</strong>模式运行。根据消防控制防线安全规程，禁止下发复位、消音、启动/中止联动等任何模拟控制指令，已对操作终端实现单向物理隔离闭锁。
+                  </p>
+                  <button className="mode-switch-prompt-btn" onClick={() => logout()}>
+                    切换到【模拟训练】模式以进行仿真演练
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="linkage-panel-grid">
             {/* 左侧控制面板 */}
             <div className="linkage-status-panel">
               <div>
@@ -2058,11 +2120,12 @@ export function FireLinkage() {
                   </div>
                 </div>
 
-              </div>
             </div>
           </div>
-        </>
-      )}
+        </div>
+      </div>
+    </>
+  )}
 
       {/* 灭火剂储存站监视子页面 */}
       {activeSubTab === "stations" && (

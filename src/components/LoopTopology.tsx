@@ -11,7 +11,8 @@ import {
   Sliders,
   Terminal,
   Wifi,
-  WifiOff
+  WifiOff,
+  Lock
 } from "lucide-react";
 import { useFireStore } from "../store/useFireStore";
 import type { DeviceStatus, TopologyDevice } from "../types";
@@ -70,7 +71,8 @@ export function LoopTopology() {
     selectTopologyAddr,
     triggerTopologyAlarm,
     triggerTopologyFault,
-    resetTopologyDevice
+    resetTopologyDevice,
+    loginMode
   } = useFireStore();
 
   const [activeTab, setActiveTab] = useState<"network" | "physical">("physical");
@@ -2066,58 +2068,60 @@ export function LoopTopology() {
                         </tbody>
                       </table>
 
-                      <div className="simulation-actions-box">
-                        <h5>
-                          <Terminal size={14} />
-                          现场设备模拟控制台
-                        </h5>
-                        <p className="muted">通过模拟测试按键，可以在该回路节点注入告警或物理断路，验证 system 应急响应流：</p>
-                        
-                        <div className="sim-buttons">
-                          <button
-                            className="sim-btn alarm"
-                            onClick={() =>
-                              triggerTopologyAlarm(
-                                selectedControllerId!,
-                                selectedModuleId!,
-                                selectedLoopNumber!,
-                                selectedTopologyAddr!
-                              )
-                            }
-                          >
-                            <AlertTriangle size={15} />
-                            模拟火警触发
-                          </button>
-                          <button
-                            className="sim-btn fault"
-                            onClick={() =>
-                              triggerTopologyFault(
-                                selectedControllerId!,
-                                selectedModuleId!,
-                                selectedLoopNumber!,
-                                selectedTopologyAddr!
-                              )
-                            }
-                          >
-                            <WifiOff size={15} />
-                            模拟通信故障
-                          </button>
-                          <button
-                            className="sim-btn reset"
-                            onClick={() =>
-                              resetTopologyDevice(
-                                selectedControllerId!,
-                                selectedModuleId!,
-                                selectedLoopNumber!,
-                                selectedTopologyAddr!
-                              )
-                            }
-                          >
-                            <RefreshCw size={15} />
-                            消音复位信号
-                          </button>
+                      {loginMode !== "real" && (
+                        <div className="simulation-actions-box">
+                          <h5>
+                            <Terminal size={14} />
+                            现场设备模拟控制台
+                          </h5>
+                          <p className="muted">通过模拟测试按键，可以在该回路节点注入告警或物理断路，验证 system 应急响应流：</p>
+                          
+                          <div className="sim-buttons">
+                            <button
+                              className="sim-btn alarm"
+                              onClick={() =>
+                                triggerTopologyAlarm(
+                                  selectedControllerId!,
+                                  selectedModuleId!,
+                                  selectedLoopNumber!,
+                                  selectedTopologyAddr!
+                                )
+                              }
+                            >
+                              <AlertTriangle size={15} />
+                              模拟火警触发
+                            </button>
+                            <button
+                              className="sim-btn fault"
+                              onClick={() =>
+                                triggerTopologyFault(
+                                  selectedControllerId!,
+                                  selectedModuleId!,
+                                  selectedLoopNumber!,
+                                  selectedTopologyAddr!
+                                )
+                              }
+                            >
+                              <WifiOff size={15} />
+                              模拟通信故障
+                            </button>
+                            <button
+                              className="sim-btn reset"
+                              onClick={() =>
+                                resetTopologyDevice(
+                                  selectedControllerId!,
+                                  selectedModuleId!,
+                                  selectedLoopNumber!,
+                                  selectedTopologyAddr!
+                                )
+                              }
+                            >
+                              <RefreshCw size={15} />
+                              消音复位信号
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 ) : (

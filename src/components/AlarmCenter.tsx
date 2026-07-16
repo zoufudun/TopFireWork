@@ -10,7 +10,8 @@ import {
   Calendar,
   MapPin,
   Cpu,
-  Search
+  Search,
+  Lock
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { eventBus } from "../events/eventBus";
@@ -117,7 +118,9 @@ export function AlarmCenter() {
     selectedAlarmId,
     selectAlarm,
     setSelectedFloor,
-    setPage
+    setPage,
+    loginMode,
+    operatorName
   } = useFireStore();
 
   // Unified sleek filters state
@@ -240,7 +243,7 @@ export function AlarmCenter() {
 
     eventBus.emit(type, {
       alarmId: selectedAlarm.id,
-      operator: "演示值班员"
+      operator: operatorName || "值班人员"
     });
   }
 
@@ -832,37 +835,77 @@ export function AlarmCenter() {
               </div>
             </dl>
 
-            <div className="workflow-actions">
+            <div className="workflow-actions" style={{ flexDirection: "column", alignItems: "flex-start", gap: "12px" }}>
               {selectedAlarm.status === "new" && (
-                <button
-                  className="action-primary"
-                  onClick={() =>
-                    emitAction("alarm:acknowledge")
-                  }
-                >
-                  <ShieldAlert size={17} />
-                  确认告警
-                </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
+                  <button
+                    className="action-primary"
+                    onClick={() =>
+                      emitAction("alarm:acknowledge")
+                    }
+                    style={{ width: "fit-content" }}
+                  >
+                    <ShieldAlert size={17} />
+                    确认告警 (确认已阅)
+                  </button>
+                  {loginMode === "real" && (
+                    <span style={{ fontSize: "11px", color: "var(--amber)", lineHeight: "1.4" }}>
+                      ⚠️ 提示：此确认仅表示值班人员已阅已知悉该事件，非真实控制器消音/复位，不向下发控制指令。
+                    </span>
+                  )}
+                </div>
               )}
 
               {selectedAlarm.status === "acknowledged" && (
-                <button
-                  className="action-primary"
-                  onClick={() => emitAction("alarm:process")}
-                >
-                  <PlayCircle size={17} />
-                  开始处置
-                </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
+                  <button
+                    className="action-primary"
+                    onClick={() => emitAction("alarm:process")}
+                    style={{ width: "fit-content" }}
+                  >
+                    <PlayCircle size={17} />
+                    开始处置 (派发工单)
+                  </button>
+                  {loginMode === "real" && (
+                    <span style={{ fontSize: "11px", color: "var(--amber)", lineHeight: "1.4" }}>
+                      ⚠️ 提示：此操作仅代表系统已建处置工单通知人员核实，不会向物理控制器发送任何解除指令。
+                    </span>
+                  )}
+                </div>
               )}
 
               {selectedAlarm.status === "processing" && (
-                <button
-                  className="action-primary"
-                  onClick={() => emitAction("alarm:resolve")}
-                >
-                  <CheckCircle2 size={17} />
-                  完成处置
-                </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
+                  {loginMode === "real" ? (
+                    <div style={{
+                      background: "rgba(255, 77, 94, 0.08)",
+                      border: "1px solid rgba(255, 77, 94, 0.2)",
+                      borderRadius: "8px",
+                      padding: "12px 14px",
+                      fontSize: "11.5px",
+                      color: "#ff8894",
+                      lineHeight: "1.5",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px"
+                    }}>
+                      <Lock size={15} style={{ flexShrink: 0 }} />
+                      <span>
+                        <strong>物理主机消音复位反馈挂起：</strong>
+                        前端前台不具备发送复位指令的物理链路。请在线下消防主机硬件上执行<b>[消音/复位]</b>。系统同步物理主机反馈后将自动完结并归档此事件。
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      className="action-primary"
+                      onClick={() => emitAction("alarm:resolve")}
+                      style={{ width: "fit-content" }}
+                    >
+                      <CheckCircle2 size={17} />
+                      完成处置
+                    </button>
+                  )}
+                </div>
               )}
 
               <button

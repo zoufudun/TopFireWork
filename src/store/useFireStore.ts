@@ -73,6 +73,11 @@ interface FireState {
   triggerTopologyFault: (ctrlId: string, modId: string, loopNum: number, addr: number) => void;
   resetTopologyDevice: (ctrlId: string, modId: string, loopNum: number, addr: number) => void;
 
+  loginMode: "training" | "real" | null;
+  operatorName: string;
+  login: (mode: "training" | "real", operatorName: string) => void;
+  logout: () => void;
+
   reset: () => void;
 }
 
@@ -104,6 +109,11 @@ export const useFireStore = create<FireState>((set) => ({
   selectedModuleId: "CTRL01-MOD1",
   selectedLoopNumber: 1,
   selectedTopologyAddr: undefined,
+
+  loginMode: null,
+  operatorName: "",
+  login: (mode, operatorName) => set({ loginMode: mode, operatorName, page: "overview" }),
+  logout: () => set({ loginMode: null, operatorName: "", page: "overview" }),
 
   setPage: (page) => set({ page }),
 
@@ -249,6 +259,7 @@ export const useFireStore = create<FireState>((set) => ({
 
   triggerTopologyAlarm: (ctrlId, modId, loopNum, addr) => {
     set((state) => {
+      if (state.loginMode === "real") return state;
       const ctrl = state.controllers.find((c) => c.id === ctrlId);
       const mod = ctrl?.modules.find((m) => m.id === modId);
       const loop = mod?.loops.find((l) => l.loopNumber === loopNum);
@@ -327,6 +338,7 @@ export const useFireStore = create<FireState>((set) => ({
 
   triggerTopologyFault: (ctrlId, modId, loopNum, addr) => {
     set((state) => {
+      if (state.loginMode === "real") return state;
       const ctrl = state.controllers.find((c) => c.id === ctrlId);
       const mod = ctrl?.modules.find((m) => m.id === modId);
       const loop = mod?.loops.find((l) => l.loopNumber === loopNum);
@@ -394,6 +406,7 @@ export const useFireStore = create<FireState>((set) => ({
 
   resetTopologyDevice: (ctrlId, modId, loopNum, addr) => {
     set((state) => {
+      if (state.loginMode === "real") return state;
       const ctrl = state.controllers.find((c) => c.id === ctrlId);
       const mod = ctrl?.modules.find((m) => m.id === modId);
       const loop = mod?.loops.find((l) => l.loopNumber === loopNum);
